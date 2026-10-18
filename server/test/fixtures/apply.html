@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Senior React Engineer - Acme</title>
+<style>
+  .opt-list { border: 1px solid #ccc; list-style: none; padding: 0; margin: 0; position: absolute; background: #fff; }
+  .opt-list li { padding: 4px 8px; cursor: pointer; }
+  .field { margin: 10px 0; position: relative; }
+  .error { color: red; }
+</style></head>
+<body>
+<h1>Senior React Engineer</h1>
+<form id="app">
+  <div class="field"><label for="first_name">First Name *</label><input id="first_name" name="first_name" required></div>
+  <div class="field"><label for="last_name">Last Name *</label><input id="last_name" name="last_name" required></div>
+  <div class="field"><label for="email">Email *</label><input id="email" type="email" name="email" required></div>
+  <div class="field"><label for="phone">Phone</label><input id="phone" name="phone"></div>
+  <div class="field"><label for="resume">Resume/CV *</label><input id="resume" type="file" name="resume" required></div>
+  <div class="field"><label for="li">LinkedIn Profile</label><input id="li" name="urls[LinkedIn]"></div>
+  <div class="field">
+    <label for="auth">Are you legally authorized to work in the United States? *</label>
+    <select id="auth" name="auth" required><option value="">Select...</option><option value="1">Yes</option><option value="0">No</option></select>
+  </div>
+  <fieldset class="field"><legend>Will you now or in the future require sponsorship? *</legend>
+    <label><input type="radio" name="sponsor" value="yes" required> Yes</label>
+    <label><input type="radio" name="sponsor" value="no"> No</label>
+  </fieldset>
+  <div class="field">
+    <label id="gender-label" for="gender">Gender</label>
+    <input id="gender" role="combobox" aria-labelledby="gender-label" aria-autocomplete="list" class="select__input" autocomplete="off">
+    <input type="hidden" name="gender" id="gender-value">
+    <span id="gender-selected"></span>
+  </div>
+  <div class="field"><label for="why">Why do you want to work at Acme? *</label><textarea id="why" name="why" required></textarea></div>
+  <div class="field"><label><input type="checkbox" id="consent" name="consent" required> I acknowledge the privacy policy *</label></div>
+  <p class="error" id="err" role="alert" hidden></p>
+  <button type="submit">Submit application</button>
+</form>
+<div id="captcha-slot"></div>
+<script>
+  // a react-select-like dropdown
+  const OPTIONS = ['Male', 'Female', 'Non-binary', "I don't wish to answer"];
+  const input = document.getElementById('gender');
+  let list;
+  function open() {
+    list?.remove();
+    list = document.createElement('ul');
+    list.className = 'opt-list';
+    list.setAttribute('role', 'listbox');
+    OPTIONS.filter(o => o.toLowerCase().includes(input.value.toLowerCase())).forEach(o => {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.textContent = o;
+      li.onmousedown = (e) => { e.preventDefault(); document.getElementById('gender-value').value = o; document.getElementById('gender-selected').textContent = o; input.value = ''; list.remove(); };
+      list.appendChild(li);
+    });
+    input.parentElement.appendChild(list);
+  }
+  input.addEventListener('focus', open);
+  input.addEventListener('input', open);
+  input.addEventListener('keydown', e => { if (e.key === 'Escape') list?.remove(); });
+
+  if (location.search.includes('captcha')) {
+    const f = document.createElement('iframe');
+    f.src = '/recaptcha/api2/anchor';
+    f.width = 300; f.height = 80;
+    document.getElementById('captcha-slot').appendChild(f);
+  }
+  if (location.search.includes('extra')) {
+    const d = document.createElement('div');
+    d.className = 'field';
+    d.innerHTML = '<label for="clear">What is your security clearance level? *</label><input id="clear" name="clearance" required>';
+    document.getElementById('app').insertBefore(d, document.getElementById('err'));
+  }
+
+  document.getElementById('app').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries([...fd.entries()].map(([k, v]) => [k, v instanceof File ? { name: v.name, size: v.size, type: v.type } : v]));
+    await fetch('/submit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
+    location.href = '/thanks';
+  });
+</script>
+</body>
+</html>
