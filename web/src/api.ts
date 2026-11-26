@@ -57,7 +57,8 @@ export const api = {
 
   profile: () => call<DevProfile>('GET', '/profile'),
   saveProfile: (p: DevProfile) => call<DevProfile>('PUT', '/profile', p),
-  uploadResume: (name: string, data: string) => call<{ resume_name: string }>('POST', '/profile/resume', { name, data }),
+  uploadResume: (name: string, data: string, parse = false) =>
+    call<{ resume_name: string; parsed?: Partial<DevProfile>; unreadable?: boolean }>('POST', '/profile/resume', { name, data, parse }),
   deleteResume: () => call<void>('DELETE', '/profile/resume'),
   applications: () => call<Application[]>('GET', '/applications'),
   apply: (roleId: number, consent: boolean) => call<Application>('POST', '/applications', { roleId, consent }),
@@ -108,12 +109,13 @@ export const api = {
 }
 
 /** Reads a PDF the person picked and uploads it as their resume. */
-export async function uploadResumeFile(file: File) {
+/** Uploads a resume PDF. With `parse`, the response also suggests profile fields read from it. */
+export async function uploadResumeFile(file: File, parse = false) {
   if (file.size > 4 * 1024 * 1024) throw new ApiError('That PDF is over 4 MB', 400, {})
   const bytes = new Uint8Array(await file.arrayBuffer())
   let bin = ''
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return api.uploadResume(file.name, btoa(bin))
+  return api.uploadResume(file.name, btoa(bin), parse)
 }
 
 export const money = (n: number | null | undefined) => (n ? `$${n >= 1000 ? `${Math.round(n / 1000)}k` : n}` : '')

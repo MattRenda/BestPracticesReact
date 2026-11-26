@@ -17,6 +17,9 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useToast()
+  const [started, setStarted] = useState(false)
+  const [reading, setReading] = useState(false)
+  const [filled, setFilled] = useState<{ from: string; count: number; unreadable: boolean } | null>(null)
 
   useEffect(() => {
     api.profile().then(setP, (e: Error) => setToast(e.message))
@@ -25,6 +28,26 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
   const update = (patch: Partial<DevProfile>) => {
     setP((cur) => ({ ...cur, ...patch }))
     setDirty(true)
+  }
+
+  async function fillFromResume(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !p) return
+    setReading(true)
+    try {
+      const r = await uploadResumeFile(file, true)
+      const [next, count] = fillEmpty(p, r.parsed ?? {})
+      setP({ ...next, has_resume: true, resume_name: r.resume_name })
+      if (count) setDirty(true)
+      setFilled({ from: r.resume_name, count, unreadable: !!r.unreadable })
+      setStarted(true)
+      window.scrollTo({ top: 0 })
+    } catch (err) {
+      setToast((err as Error).message)
+    } finally {
+      setReading(false)
+    }
   }
 
   async function onImport(e: ChangeEvent<HTMLInputElement>) {
@@ -61,6 +84,30 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
   }
 
   if (!p) return <p className="muted">Loading…</p>
+
+  // New developers start by choosing: upload a resume to fill this in, or type it out.
+  if (onboarding && !started && !p.name && !p.headline && !p.skills)
+    return (
+      <section className="view narrow">
+        <header className="view-head">
+          <h1>Set up your profile</h1>
+          <p className="lede">Founders see this when you say yes to their role. Start from your resume, or fill it out yourself.</p>
+        </header>
+        <div className="start-choices">
+          <label className={`choice upload-choice${reading ? ' busy' : ''}`}>
+            <strong>{reading ? 'Reading your resume…' : 'Upload your resume'}</strong>
+            <span>PDF. HireMe fills in your profile from it for you to check, and sends it when it applies for you.</span>
+            <input type="file" accept="application/pdf,.pdf" onChange={fillFromResume} disabled={reading} aria-label="Upload your resume (PDF)" />
+          </label>
+          <button type="button" className="choice" onClick={() => setStarted(true)} disabled={reading}>
+            <strong>Fill it out yourself</strong>
+            <span>A few minutes. You can add a resume later.</span>
+          </button>
+        </div>
+        <Toast msg={toast} />
+      </section>
+    )
+
   const text = (k: 'name' | 'headline' | 'location', label: string, placeholder = '', required = false) => (
     <label className="field">
       <span>
@@ -80,11 +127,37 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
             ? 'This is what founders see when you say yes to their role. Your email stays private until you choose to share it.'
             : 'Founders see this when you say yes to their role, and when they’re looking for developers.'}
         </p>
-        <label className="btn ghost small import">
-          Import from file
-          <input type="file" accept=".json,application/json" onChange={onImport} />
-        </label>
+        <div className="head-actions">
+          <label className="btn ghost small import">
+            {reading ? 'Reading…' : 'Fill in from resume'}
+            <input type="file" accept="application/pdf,.pdf" onChange={fillFromResume} disabled={reading} />
+          </label>
+          <label className="btn ghost small import">
+            Import from file
+            <input type="file" accept=".json,application/json" onChange={onImport} />
+          </label>
+        </div>
       </header>
+
+      {filled && (
+        <p className="banner" role="status">
+          {filled.unreadable ? (
+            <>
+              <b>{filled.from}</b> looks like a scanned image, so there was no text to read. It’s saved as your resume for applications; fill in
+              the rest below.
+            </>
+          ) : filled.count ? (
+            <>
+              Filled in {filled.count} {filled.count === 1 ? 'field' : 'fields'} from <b>{filled.from}</b>. Check them over, especially your
+              headline, add anything missing, then save.
+            </>
+          ) : (
+            <>
+              Nothing new to fill in from <b>{filled.from}</b>. It’s saved as your resume for applications.
+            </>
+          )}
+        </p>
+      )}
 
       <form onSubmit={save}>
         <fieldset className="group">
@@ -177,6 +250,29 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
       <Toast msg={toast} />
     </section>
   )
+}
+
+const TEXT_FIELDS = ['name', 'headline', 'location', 'phone', 'skills', 'bio', 'experience'] as const
+
+/** Copies suggestions into fields that are still empty; never overwrites what the developer wrote. */
+function fillEmpty(cur: DevProfile, s: Partial<DevProfile>): [DevProfile, number] {
+  const next: DevProfile = { ...cur, links: { ...cur.links } }
+  let count = 0
+  for (const k of TEXT_FIELDS)
+    if (s[k] && !cur[k]?.trim()) {
+      next[k] = s[k]
+      count++
+    }
+  if (s.years != null && cur.years == null) {
+    next.years = s.years
+    count++
+  }
+  for (const k of ['github', 'linkedin', 'portfolio'] as const)
+    if (s.links?.[k] && !cur.links?.[k]) {
+      next.links = { ...next.links, [k]: s.links[k] }
+      count++
+    }
+  return [next, count]
 }
 
 export function DeleteAccount() {

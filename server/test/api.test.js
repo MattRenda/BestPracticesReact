@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, before, after } from 'node:test';
@@ -241,6 +241,29 @@ test('accounts: role is fixed once set up, and accounts can be deleted', async (
   assert.equal((await dev.req('POST', '/me/role', { role: 'founder' })).status, 409);
   assert.equal((await dev.req('DELETE', '/me')).status, 204);
   assert.equal((await dev.req('GET', '/me')).body.user, null);
+});
+
+test('setup can start from a resume: upload fills in suggestions, nothing saved until the developer saves', async () => {
+  const dev = client();
+  await dev.signIn('resume-first@example.com', 'dev');
+  const data = readFileSync(new URL('./fixtures/resume.pdf', import.meta.url)).toString('base64');
+  const up = await dev.req('POST', '/profile/resume', { name: 'Jordan Resume.pdf', data, parse: true });
+  assert.equal(up.status, 200, JSON.stringify(up.body));
+  assert.equal(up.body.parsed.name, 'Jordan Example');
+  assert.equal(up.body.parsed.location, 'Portland, OR');
+  assert.match(up.body.parsed.headline, /^Backend Engineer/);
+  assert.match(up.body.parsed.skills, /Go, Python/);
+  assert.equal(up.body.parsed.links.github, 'https://github.com/jordan-example');
+  assert.equal(up.body.unreadable, false);
+  // The resume is stored, but the profile is still empty and incomplete.
+  const me = (await dev.req('GET', '/me')).body;
+  assert.equal(me.profileComplete, false);
+  const p = (await dev.req('GET', '/profile')).body;
+  assert.equal(p.has_resume, true);
+  assert.equal(p.name, '');
+  // Without parse, uploads just store the file.
+  const plain = await dev.req('POST', '/profile/resume', { name: 'r.pdf', data });
+  assert.equal(plain.body.parsed, undefined);
 });
 
 test('smtp settings parse, with the password kept separately', async () => {

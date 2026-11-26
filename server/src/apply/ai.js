@@ -10,11 +10,12 @@ export const aiEnabled = (env = process.env) => Boolean(env.ANTHROPIC_API_KEY);
 export const FACTUAL =
   /authori[sz]|sponsor|visa|citizen|green card|clearance|salary|compensation|\bpay\b|wage|relocat|start date|notice period|available to start|when can you start|years of|gender|pronoun|\bsex\b|race|ethnic|hispanic|latin|veteran|disabilit|criminal|convict|felony|\bage\b|18 years|over 18|degree|gpa|graduat|address|zip|postal|phone|referr|how did you hear|located|location|reside|live in|on-?site|in-?office|in person|commute|hybrid|time ?zone|hours|shift|travel|background check|drug|non-?compete|current(ly)? employ|notice/i;
 
-async function callClaude(env, system, prompt, maxTokens) {
+/** `content` is a prompt string or an array of content blocks (text, document…). */
+export async function callClaude(env, system, content, maxTokens) {
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: env.ANTHROPIC_MODEL || 'claude-haiku-5-5', max_tokens: maxTokens, system, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model: env.ANTHROPIC_MODEL || 'claude-haiku-5-5', max_tokens: maxTokens, system, messages: [{ role: 'user', content }] }),
     signal: AbortSignal.timeout(45_000),
   });
   if (!res.ok) throw new Error(`Claude API ${res.status}: ${(await res.text()).slice(0, 200)}`);

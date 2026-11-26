@@ -8,6 +8,7 @@ import { createMailer } from './mail.js';
 import { checkStartup, emailDomain, emailMatchesDomain, looksLikeAgency, siteDomain } from './rules.js';
 import { createImporter } from './importer.js';
 import { createApplier, applyReadiness } from './apply/agent.js';
+import { parseResume } from './resume-parse.js';
 
 const WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
@@ -255,18 +256,25 @@ export function createApp(
   });
 
   // ---------- resume file ----------
-  app.post('/api/profile/resume', requireRole('dev'), (req, res) => {
-    if (!getProfile(req.user.id)) return res.status(400).json({ error: 'Save your profile first' });
+  // Upload works before the profile is saved (setup can start from a resume); the row stays
+  // incomplete, and so invisible to founders, until name, headline and skills are saved.
+  // With { parse: true } the response carries suggested profile fields read from the PDF.
+  app.post('/api/profile/resume', requireRole('dev'), async (req, res) => {
     const buf = Buffer.from(String(req.body?.data || ''), 'base64');
     if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') return res.status(400).json({ error: 'Upload your resume as a PDF' });
     if (buf.length > 4 * 1024 * 1024) return res.status(400).json({ error: 'That PDF is over 4 MB' });
+    if (req.body?.parse && auth.limited(`resume:${req.user.id}`, 20, 24 * 3600_000))
+      return res.status(429).json({ error: 'That’s a lot of resumes today. Try again tomorrow.' });
+    db.prepare('INSERT OR IGNORE INTO dev_profiles (user_id) VALUES (?)').run(req.user.id);
     const file = `${req.user.id}-${Date.now()}.pdf`;
     const old = db.prepare('SELECT resume_file FROM dev_profiles WHERE user_id = ?').get(req.user.id)?.resume_file;
     writeFileSync(path.join(applier.resumesDir, file), buf);
     if (old) rmSync(path.join(applier.resumesDir, old), { force: true });
     const name = str(req.body?.name, 120).replace(/[^\w .()-]/g, '') || 'Resume.pdf';
     db.prepare('UPDATE dev_profiles SET resume_file = ?, resume_name = ? WHERE user_id = ?').run(file, name.endsWith('.pdf') ? name : `${name}.pdf`, req.user.id);
-    res.json({ resume_name: name });
+    if (!req.body?.parse) return res.json({ resume_name: name });
+    const parsed = await parseResume(buf, { log });
+    res.json({ resume_name: name, parsed: parsed.fields, unreadable: parsed.empty });
   });
   app.get('/api/profile/resume', requireRole('dev'), (req, res) => {
     const p = db.prepare('SELECT resume_file, resume_name FROM dev_profiles WHERE user_id = ?').get(req.user.id);
