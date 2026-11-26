@@ -471,3 +471,8 @@ a { color: var(--moss); }
 .shot img, .shot-img { width: 100%; border: 1px solid var(--rule); border-radius: 8px; margin-top: 6px; }
 .sheet-actions.wrap { flex-wrap: wrap; }
 .callout.small { font-size: var(--t-sm); }
+
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: var(--t-sm); margin: -2px 0; }
+.or::before, .or::after { content: ''; flex: 1; border-top: 1px solid var(--rule); }
+.google-btn { display: flex; justify-content: center; min-height: 44px; }
+.google-btn[aria-busy='true'] { opacity: 0.5; pointer-events: none; }

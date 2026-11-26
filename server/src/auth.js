@@ -2,13 +2,15 @@
 // Signing in proves the person controls that inbox, which is what founder verification relies on.
 import { createHash, randomBytes } from 'node:crypto';
 import { isEmail, isFreeMail } from './rules.js';
+import { createGoogleVerifier } from './google.js';
 
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 const COOKIE = 'hm_session';
 const SESSION_DAYS = 30;
 const LINK_MINUTES = 20;
 
-export function createAuth(db, { mailer, publicUrl, adminEmails = [], production = false, log = console, ipLimit = 12 }) {
+export function createAuth(db, { mailer, publicUrl, adminEmails = [], production = false, log = console, ipLimit = 12, googleClientId = '', fetchImpl = fetch }) {
+  const verifyGoogle = createGoogleVerifier({ clientId: googleClientId, fetchImpl });
   const admins = new Set(adminEmails.map((e) => e.trim().toLowerCase()).filter(Boolean));
   const hits = new Map();
 
@@ -41,6 +43,15 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
       'Set-Cookie',
       `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure(req) ? '; Secure' : ''}`,
     );
+  }
+
+  /** Creates the account if needed, applies a first-time role choice, and starts a session. */
+  function signIn(req, res, email, intent) {
+    db.prepare('INSERT OR IGNORE INTO users (email) VALUES (?)').run(email);
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user.role && intent) db.prepare('UPDATE users SET role = ? WHERE id = ?').run(intent, user.id);
+    setSession(req, res, user.id);
+    return user;
   }
 
   const isAdmin = (user) => !!user && admins.has(user.email.toLowerCase());
@@ -115,13 +126,25 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
       const row = db.prepare("SELECT * FROM login_tokens WHERE hash = ? AND expires_at > datetime('now')").get(sha(token));
       if (!row) return res.status(400).json({ error: 'That sign-in link has expired or was already used. Request a new one.' });
       db.prepare('DELETE FROM login_tokens WHERE hash = ?').run(row.hash);
-      db.prepare('INSERT OR IGNORE INTO users (email) VALUES (?)').run(row.email);
-      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(row.email);
-      if (!user.role && row.intent) {
-        // A founder intent with a personal email was refused at /start, so this is safe.
-        db.prepare('UPDATE users SET role = ? WHERE id = ?').run(row.intent, user.id);
+      // A founder intent with a personal email was refused at /start, so this is safe.
+      signIn(req, res, row.email, row.intent);
+      res.json({ ok: true });
+    });
+
+    // "Sign in with Google": the browser sends Google's signed ID token; Google has verified the email.
+    app.post('/api/auth/google', async (req, res) => {
+      const intent = ['dev', 'founder'].includes(req.body?.intent) ? req.body.intent : '';
+      if (limited(`gip:${req.ip}`, 30, 15 * 60_000)) return res.status(429).json({ error: 'Too many sign-in attempts. Wait a few minutes.' });
+      let g;
+      try {
+        g = await verifyGoogle(req.body?.credential);
+      } catch (e) {
+        return res.status(400).json({ error: e.message });
       }
-      setSession(req, res, user.id);
+      const existing = db.prepare('SELECT role FROM users WHERE email = ?').get(g.email);
+      if (intent === 'founder' && !existing?.role && isFreeMail(g.email))
+        return res.status(400).json({ error: 'Founders sign in with their work Google account on the startup’s domain, so we can verify the company.' });
+      signIn(req, res, g.email, intent);
       res.json({ ok: true });
     });
 

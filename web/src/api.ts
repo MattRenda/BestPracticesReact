@@ -47,6 +47,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 export const api = {
   me: () => call<Me>('GET', '/me'),
+  config: () => call<{ googleClientId: string | null }>('GET', '/config'),
+  googleSignIn: (credential: string, intent: 'dev' | 'founder') => call<{ ok: boolean }>('POST', '/auth/google', { credential, intent }),
   startSignIn: (email: string, intent: 'dev' | 'founder') => call<{ sent: boolean; devLink?: string }>('POST', '/auth/start', { email, intent }),
   verify: (token: string) => call<{ ok: boolean }>('POST', '/auth/verify', { token }),
   logout: () => call<void>('POST', '/auth/logout'),

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from '../api'
+import { GoogleButton } from '../components/GoogleButton'
 
 export function Landing() {
   const [intent, setIntent] = useState<'dev' | 'founder'>('dev')
@@ -87,7 +88,9 @@ export function Landing() {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </label>
-              {intent === 'founder' && <p className="hint">We use your email domain to verify the company. Personal addresses like Gmail won’t work.</p>}
+              {intent === 'founder' && (
+                <p className="hint">We use your email domain to verify the company, so use your work email or work Google account. Personal Gmail won’t work.</p>
+              )}
               {state.kind === 'error' && (
                 <p className="error" role="alert">
                   {state.msg}
@@ -96,6 +99,7 @@ export function Landing() {
               <button className="btn primary wide" disabled={state.kind === 'sending' || !email.trim()}>
                 {state.kind === 'sending' ? 'Sending…' : 'Email me a sign-in link'}
               </button>
+              <GoogleButton intent={intent} onError={(msg) => setState({ kind: 'error', msg })} />
               <p className="fine">No passwords. Free for developers and startups.</p>
             </>
           )}

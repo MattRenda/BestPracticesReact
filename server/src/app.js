@@ -57,6 +57,7 @@ export function createApp(
     fetchImpl = fetch, // used by the job importer
     dataDir = path.dirname(process.env.DB_PATH || path.resolve('data', 'hireme.db')), // resumes and screenshots
     applierOptions = {},
+    googleClientId = process.env.GOOGLE_CLIENT_ID || '',
   } = {},
 ) {
   const app = express();
@@ -75,7 +76,7 @@ export function createApp(
   });
   app.locals.applier = applier;
 
-  const auth = createAuth(db, { mailer, publicUrl, adminEmails, production, log, ipLimit });
+  const auth = createAuth(db, { mailer, publicUrl, adminEmails, production, log, ipLimit, googleClientId, fetchImpl });
   const { requireUser, requireRole, requireAdmin } = auth;
 
   // Resume uploads are the only big request bodies (base64 PDF up to 4 MB).
@@ -148,6 +149,8 @@ export function createApp(
 
   // ---------- me ----------
   app.get('/api/health', (_req, res) => res.json({ ok: true, email: mailer.configured }));
+  // Public settings the web app needs before sign-in. The Google client ID is public by design.
+  app.get('/api/config', (_req, res) => res.json({ googleClientId: googleClientId || null }));
 
   app.get('/api/me', (req, res) => {
     if (!req.user) return res.json({ user: null });

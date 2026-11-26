@@ -16,6 +16,10 @@ Startups with 50 or fewer people meet developers directly. No recruiters, no big
 
 Teammates join an existing startup by signing in with an email on the same domain.
 
+## Sign in with Google
+
+Set `GOOGLE_CLIENT_ID` to a Google OAuth **Web application** client ID whose authorized JavaScript origins include your site (e.g. `https://hireme-startups.fly.dev`). Only the client ID is needed — no client secret. The browser gets a signed ID token from Google, and the server checks its signature against Google's published keys, the audience, issuer and expiry, and that Google verified the email. Founders still need a work email on their startup's domain, so a Google Workspace account works and a personal Gmail can't create a startup.
+
 ## Imported jobs
 
 So developers have roles to swipe on from day one, the server imports engineering roles from startups with 50 or fewer people (`server/src/importer.js`), shortly after it starts and then twice a day:
@@ -41,6 +45,7 @@ Limits: one application at a time, 30 per developer per day. HireMe never solves
 
 | Variable | What it does |
 | --- | --- |
+| `GOOGLE_CLIENT_ID` | Optional. Shows “Continue with Google” on the sign-in page (see below) |
 | `ANTHROPIC_API_KEY` | Optional. Drafts open-ended answers and cover notes (`ANTHROPIC_MODEL` defaults to `claude-haiku-5-5`) |
 | `CHROME_PATH` | Optional. Use an installed Chrome instead of Playwright's Chromium |
 
