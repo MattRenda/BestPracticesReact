@@ -1,29 +1,29 @@
-# Deploy with Fly.io: `fly launch --no-deploy` (keep this file), then
-#   fly volumes create hireme_data --size 1
-#   fly secrets set PUBLIC_URL=https://<your-app>.fly.dev ADMIN_EMAILS=you@example.com SMTP_URL=smtps://... MAIL_FROM="HireMe <hello@yourdomain>"
-#   fly deploy
-app = "hireme-startups"
-primary_region = "sjc"
+# fly.toml app configuration file generated for hireme-startups on 2026-11-26T19:19:41Z
+#
+# See https://docs.fly.io/reference/configuration for information about how to use this file.
+#
+
+app = 'hireme-startups'
+primary_region = 'sjc'
 
 [build]
-
 [env]
-  NODE_ENV = "production"
-  PORT = "8080"
-  DB_PATH = "/data/hireme.db"
+  DB_PATH = '/data/hireme.db'
+  NODE_ENV = 'production'
+  PORT = '8080'
 
 [[mounts]]
-  source = "hireme_data"
-  destination = "/data"
+  source = 'hireme_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  memory = "512mb"
-  cpu_kind = "shared"
+  memory = '256mb'
+  cpu_kind = 'shared'
   cpus = 1
