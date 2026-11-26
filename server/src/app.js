@@ -270,10 +270,11 @@ export function createApp(
     const old = db.prepare('SELECT resume_file FROM dev_profiles WHERE user_id = ?').get(req.user.id)?.resume_file;
     writeFileSync(path.join(applier.resumesDir, file), buf);
     if (old) rmSync(path.join(applier.resumesDir, old), { force: true });
-    const name = str(req.body?.name, 120).replace(/[^\w .()-]/g, '') || 'Resume.pdf';
-    db.prepare('UPDATE dev_profiles SET resume_file = ?, resume_name = ? WHERE user_id = ?').run(file, name.endsWith('.pdf') ? name : `${name}.pdf`, req.user.id);
+    const raw = str(req.body?.name, 120).replace(/[^\w .()-]/g, '').replace(/(\.pdf)+$/i, '').trim();
+    const name = `${raw || 'Resume'}.pdf`;
+    db.prepare('UPDATE dev_profiles SET resume_file = ?, resume_name = ? WHERE user_id = ?').run(file, name, req.user.id);
     if (!req.body?.parse) return res.json({ resume_name: name });
-    const parsed = await parseResume(buf, { log });
+    const parsed = await parseResume(buf, { log, hints: { fileName: req.body?.name, email: req.user.email } });
     res.json({ resume_name: name, parsed: parsed.fields, unreadable: parsed.empty });
   });
   app.get('/api/profile/resume', requireRole('dev'), (req, res) => {

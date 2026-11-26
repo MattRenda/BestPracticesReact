@@ -21,6 +21,56 @@ export async function pdfText(buf) {
   return { text: String(text || ''), links };
 }
 
+// ---------- ligatures ----------
+// Many resume fonts draw "ft", "fi", "fl", "ff", "ffi", "ffl" as one glyph. When the PDF doesn't say
+// which letters that glyph stands for, the text comes out as "Soware" or "prole". Known words are
+// put back together; anything else is left as it is.
+
+const LIGATURE_WORDS = `software microsoft after afternoon draft drafted drafting shift shifted shifting shifts swift swiftui craft crafted
+crafting aircraft often fifty fifteen thrift uplift shaft profile profiles file files field fields final finally finance financial find finding
+findings first fix fixed fixes fixing config configuration configurations configure configured certified certification certifications
+certificate efficient efficiently efficiency office official officer benefit benefits specific specifically specification specifications
+identify identified identifying verified verification modified modify modifying simplified notification notifications classification unified
+refine refined refining define defined defining definition definitions confident confidence profit profitable scientific significant
+significantly firebase firewall firm firmware figma fintech filter filters filtering infinite artificial satisfied satisfaction qualified
+qualification qualifications diversified fiscal figure figured flow flows workflow workflows dataflow overflow tensorflow airflow webflow
+flutter flexible flexibility flex flexbox influence influenced conflict conflicts reflect reflected flagship flag flags fleet flight flights
+netflix fluent staff staffing effort efforts effective effectively offer offered offering offerings offline different difference differences
+traffic buffer buffers coffee affiliate affiliates affordable effect effects handoff kickoff tariff sufficient difficult difficulty shuffle
+platform fields fidelity fiber fibre filed filing fill filled filling finish finished finishing finalist fiction affinity amplify amplified
+classified clarified justified rectified quantified simplify simplifying unify specified traffic efficient refactor refactored refactoring
+fulfill fulfilled fulfillment`
+  .split(/\s+/)
+  .filter(Boolean);
+const LIGATURES = ['ffi', 'ffl', 'ff', 'fi', 'fl', 'ft'];
+const REAL = new Set(
+  'ask ash utter eat ear ate aid art act add age ago air all and any are arm bed bet but can cat cut end eye for get hat her him his how ice ill its let lot low man men new not now old one our out own put ran red run saw say see set she sit six ten the too top two use was way who why win yes yet you ore oat ion ease ever lies late lags lex'.split(' '),
+);
+const BROKEN = (() => {
+  const map = new Map();
+  for (const w of LIGATURE_WORDS)
+    for (const lig of LIGATURES) {
+      let i = w.indexOf(lig);
+      while (i >= 0) {
+        const b = w.slice(0, i) + w.slice(i + lig.length);
+        if (b.length >= 3 && !REAL.has(b) && !LIGATURE_WORDS.includes(b)) map.set(b, map.has(b) && map.get(b) !== w ? null : w);
+        i = w.indexOf(lig, i + 1);
+      }
+    }
+  return map;
+})();
+const matchCase = (src, word) => (src === src.toUpperCase() ? word.toUpperCase() : /^\p{Lu}/u.test(src) ? word[0].toUpperCase() + word.slice(1) : word);
+
+export function fixLigatures(text) {
+  return String(text)
+    .normalize('NFKC') // ﬁ → fi, ﬂ → fl…
+    .replace(/[-�]/g, '') // glyphs with no letters behind them
+    .replace(/\p{L}+/gu, (w) => {
+      const fixed = BROKEN.get(w.toLowerCase());
+      return fixed ? matchCase(w, fixed) : w;
+    });
+}
+
 // ---------- sections ----------
 
 const SECTIONS = [
@@ -106,25 +156,63 @@ const STATE_NAMES =
 
 const titleCase = (s) => (s === s.toUpperCase() ? s.toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : s);
 
-function findName(header, lines) {
-  for (const line of [...header.slice(0, 4), ...lines.slice(0, 2)]) {
-    const t = line.split(/\s[|•·]\s/)[0].trim();
-    if (/[\d@/]|https?:|www\./i.test(t)) continue;
+const STATE_ALT = [
+  ...STATE_NAMES.source.slice(2, -2).split('|').map((n) => n.replace(/\b[a-z]/g, (c) => c.toUpperCase())), // longest first: "West Virginia" before "VA"
+  ...STATES.split(' '),
+].join('|');
+const CITY_STATE = new RegExp(`([\\p{Lu}][\\p{L}.'’-]*(?: [\\p{Lu}][\\p{L}.'’-]*){0,2}),?\\s+(${STATE_ALT})(?![\\p{L}])`, 'u');
+const CITY_STATE_I = new RegExp(CITY_STATE.source, 'iu');
+const looksLikePlace = (t) => /\bremote\b/i.test(t) || CITY_STATE_I.test(t.replace(/\b\d{5}(-\d{4})?\b/g, '').trim());
+const NOT_NAME =
+  /\b(engineer(ing)?|developer|programmer|architect|designer|manager|analyst|consultant|scientist|software|stack|resume|curriculum|vitae|summary|profile|experience|contact|portfolio|university|college|inc|llc|corp)\b/i;
+const NAME_FILLER = /^(resume|cv|curriculum|vitae|final|updated?|new|copy|draft|latest|v\d+|pdf|doc|docx)$/i;
+
+/** "M A T T H E W   R E N D A" → "MATTHEW RENDA" */
+function unspace(line) {
+  if (!/^(\p{L} +){3,}\p{L}$/u.test(line.trim())) return line;
+  const words = line.trim().split(/ {2,}/);
+  return words.map((w) => w.replace(/ /g, '')).join(' ');
+}
+
+/** A name guessed from a file like "MatthewRenda_Resume_2023 (2).pdf". */
+export function nameFromFile(fileName) {
+  const words = String(fileName || '')
+    .replace(/(\.(pdf|docx?))+$/i, '')
+    .replace(/\(\d+\)/g, ' ')
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2')
+    .split(/\s+/)
+    .filter((w) => /^\p{L}[\p{L}'’]+$/u.test(w) && !NAME_FILLER.test(w));
+  return words.length >= 2 && words.length <= 4 ? words.map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '';
+}
+
+function findName(header, lines, { fileName, email } = {}) {
+  const hints = [...nameFromFile(fileName).toLowerCase().split(' '), String(email || '').split('@')[0].toLowerCase()].filter((w) => w.length > 1);
+  const overlap = (t) => t.toLowerCase().split(/\s+/).filter((w) => w.replace(/\.$/, '').length > 1 && hints.some((h) => h.includes(w.replace(/\.$/, '')))).length;
+  let best = null;
+  for (const raw of [...header.slice(0, 12), ...lines.slice(0, 3)]) {
+    const t = unspace(raw).split(/\s[|•·]\s/)[0].trim();
+    if (/[\d@/]|https?:|www\./i.test(t) || looksLikePlace(t) || NOT_NAME.test(t)) continue;
     const words = t.split(/\s+/);
     if (words.length < 2 || words.length > 5 || t.length > 50) continue;
-    if (!words.every((w) => /^[\p{Lu}][\p{L}.'’-]*$/u.test(w) || /^\p{Lu}+$/u.test(w))) continue;
-    return titleCase(t);
+    if (!words.every((w) => /^[\p{Lu}][\p{L}.'’-]*$/u.test(w))) continue;
+    const score = overlap(t);
+    if (!best || score > best.score) best = { t, score };
+    if (!hints.length) break; // nothing to compare with: the first name-shaped line wins
   }
-  return '';
+  const fromFile = nameFromFile(fileName);
+  if (best && (best.score > 0 || !fromFile)) return titleCase(best.t);
+  return fromFile; // the file name ("MatthewRenda_Resume.pdf") beats a line that shares nothing with it
 }
 
 function findLocation(lines) {
   for (const line of lines) {
-    for (const part of line.split(/\s*[|•·◦▪]\s*|\s{3,}/)) {
-      if (/@|\d{3}|https?:|www\./.test(part)) continue;
-      const m = part.match(/([\p{Lu}][\p{L}.'’-]*(?: [\p{Lu}][\p{L}.'’-]*){0,3}),\s*([A-Z]{2}|[A-Z][a-z]+(?: [A-Z][a-z]+)?)\b/u);
-      if (m && (STATE_SET.has(m[2]) || STATE_NAMES.test(m[2]))) return `${m[1]}, ${m[2]}`;
-      if (/^remote$/i.test(part.trim())) return 'Remote';
+    for (const raw of line.split(/\s*[|•·◦▪]\s*|\s{3,}/)) {
+      const part = raw.replace(/\b\d{5}(-\d{4})?\b/g, '').trim();
+      if (/@|https?:|www\./.test(part)) continue;
+      const m = part.match(CITY_STATE);
+      if (m && !NOT_NAME.test(m[1])) return `${m[1]}, ${m[2]}`;
+      if (/^remote$/i.test(part)) return 'Remote';
     }
   }
   return '';
@@ -209,8 +297,8 @@ function formatExperience(lines, education) {
 }
 
 /** Suggested profile fields from a resume's text. Fields it can't find are left out. */
-export function parseResumeText(text, linkAnnotations = [], now = new Date()) {
-  const lines = String(text)
+export function parseResumeText(text, linkAnnotations = [], now = new Date(), hints = {}) {
+  const lines = fixLigatures(text)
     .split(/\r?\n/)
     .map((l) => l.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
@@ -223,7 +311,7 @@ export function parseResumeText(text, linkAnnotations = [], now = new Date()) {
   const phone = (header.join(' ').match(PHONE) || lines.slice(0, 15).join(' ').match(PHONE) || [''])[0];
   const title = (sec.experience || []).map(titleFrom).find(Boolean) || '';
   const out = {
-    name: findName(header, lines),
+    name: findName(header, lines, hints),
     location: findLocation(header.length ? header : lines.slice(0, 6)),
     phone: phone.trim(),
     links: findLinks(header.join(' ') + '\n' + lines.join(' '), linkAnnotations),
@@ -283,13 +371,14 @@ links ({"github","linkedin","portfolio"} full URLs, only ones that appear).`,
 }
 
 /** Suggested fields for a resume PDF, plus `empty` when the PDF has no text (a scanned image). */
-export async function parseResume(buf, { env = process.env, log = console, now = new Date() } = {}) {
+/** `hints`: { fileName, email } help find the name when the PDF's layout hides it. */
+export async function parseResume(buf, { env = process.env, log = console, now = new Date(), hints = {} } = {}) {
   let heur = {};
   let empty = false;
   try {
     const { text, links } = await pdfText(buf);
     empty = text.replace(/\s/g, '').length < 40;
-    heur = parseResumeText(text, links.map((l) => (typeof l === 'string' ? l : l?.url)).filter(Boolean), now);
+    heur = parseResumeText(text, links.map((l) => (typeof l === 'string' ? l : l?.url)).filter(Boolean), now, hints);
   } catch (e) {
     log.warn?.(`resume text: ${e.message}`);
   }

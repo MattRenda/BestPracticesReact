@@ -48,3 +48,21 @@ test('nothing is invented: unreadable text gives no fields, and bad values are d
   assert.deepEqual(parseResumeText('', [], NOW), {});
   assert.deepEqual(clean({ years: 99, links: { github: 'javascript:alert(1)' }, name: '  ', skills: ['Go', 'Rust'] }), { skills: 'Go, Rust' });
 });
+
+test('fonts that draw "ft"/"fi"/"fl" as one glyph: words are put back together', async () => {
+  const { fixLigatures } = await import('../src/resume-parse.js');
+  assert.equal(fixLigatures('Senior Soware Engineer, Microso, workows, prole, oine'), 'Senior Software Engineer, Microsoft, workflows, profile, offline');
+  assert.equal(fixLigatures('Ask about utter ﬁxes'), 'Ask about utter fixes');
+});
+
+test('name: never a city, and the file name helps when the layout hides it', async () => {
+  const { nameFromFile } = await import('../src/resume-parse.js');
+  assert.equal(nameFromFile('MatthewRenda_Resume_2023 (2).pdf.PDF'), 'Matthew Renda');
+  assert.equal(nameFromFile('resume.pdf'), '');
+  const hints = { fileName: 'JordanExample_Resume.pdf', email: 'jordan@example.com' };
+  const a = parseResumeText('Portland OR 97201\n555-010-2233\nJORDAN Q EXAMPLE\nExperience\nEngineer, X Jan 2020 - Present', [], NOW, hints);
+  assert.equal(a.name, 'Jordan Q Example');
+  assert.equal(a.location, 'Portland, OR');
+  const b = parseResumeText('Portland OR\nSoftware Engineer\nExperience\nEngineer, X Jan 2020 - Present', [], NOW, hints);
+  assert.equal(b.name, 'Jordan Example');
+});
