@@ -1,16 +1,26 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, salaryRange, WORK_LABEL } from '../api'
-import type { MatchDetail, MatchSummary, Me, Message, SavedRole } from '../types'
-import { Chips, ReportButton, Toast } from '../components/ui'
+import type { Application, MatchDetail, MatchSummary, Me, Message, SavedRole } from '../types'
+import { Chips, ReportButton, Sheet, Toast } from '../components/ui'
 import { ago, useToast } from '../lib'
 
 export function Matches({ me, openId, onChange }: { me: Me; openId: number | null; onChange: () => void }) {
   const [list, setList] = useState<MatchSummary[] | null>(null)
   const [saved, setSaved] = useState<SavedRole[]>([])
+  const [apps, setApps] = useState<Application[]>([])
+  const [openApp, setOpenApp] = useState<Application | null>(null)
   const isDev = me.user?.role === 'dev'
-  useEffect(() => {
-    if (isDev) api.saved().then(setSaved, () => {})
+  const loadApps = useCallback(() => {
+    if (!isDev) return
+    api.saved().then(setSaved, () => {})
+    api.applications().then(setApps, () => {})
   }, [isDev])
+  useEffect(() => {
+    loadApps()
+    // Keep in-progress applications fresh
+    const t = setInterval(() => document.visibilityState === 'visible' && loadApps(), 8000)
+    return () => clearInterval(t)
+  }, [loadApps])
 
   const load = useCallback(() => api.matches().then(setList, () => {}), [])
   useEffect(() => {
@@ -56,6 +66,28 @@ export function Matches({ me, openId, onChange }: { me: Me; openId: number | nul
             ))}
           </ul>
         )}
+        {apps.length > 0 && (
+          <section className="saved">
+            <h2>Applications</h2>
+            <p className="muted small">HireMe applied for you at startups that aren’t on HireMe yet.</p>
+            <ul className="threads">
+              {apps.map((a) => (
+                <li key={a.id}>
+                  <button type="button" className="thread-btn" onClick={() => setOpenApp(a)}>
+                    <span className="t-top">
+                      <strong>{a.startup_name}</strong>
+                      <time>{ago(a.submitted_at || a.updated_at)}</time>
+                    </span>
+                    <span className="t-role">{a.title}</span>
+                    <span className="t-last">
+                      <StateChip state={a.state} />
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {saved.length > 0 && (
           <section className="saved">
             <h2>Apply on their site</h2>
@@ -77,6 +109,14 @@ export function Matches({ me, openId, onChange }: { me: Me; openId: number | nul
           </section>
         )}
       </div>
+      <ApplicationSheet
+        app={openApp}
+        onClose={() => setOpenApp(null)}
+        onChanged={() => {
+          loadApps()
+          onChange()
+        }}
+      />
       <div className="thread-pane">
         {openId ? (
           <Thread key={openId} id={openId} isDev={isDev} onActivity={() => (load(), onChange())} />
@@ -256,5 +296,128 @@ function Thread({ id, isDev, onActivity }: { id: number; isDev: boolean; onActiv
       )}
       <Toast msg={toast} />
     </div>
+  )
+}
+
+const STATE_LABEL: Record<Application['state'], string> = {
+  queued: 'Waiting to apply',
+  running: 'Applying now…',
+  submitted: 'Applied',
+  needs_you: 'Needs you',
+  failed: 'Couldn’t apply',
+  canceled: 'Canceled',
+  self_applied: 'You applied',
+}
+function StateChip({ state }: { state: Application['state'] }) {
+  const tone = state === 'submitted' || state === 'self_applied' ? 'ok' : state === 'needs_you' ? 'wait' : state === 'failed' ? 'bad' : ''
+  return <span className={`pill ${tone}`}>{STATE_LABEL[state]}</span>
+}
+
+function ApplicationSheet({ app, onClose, onChanged }: { app: Application | null; onClose: () => void; onChanged: () => void }) {
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [current, setCurrent] = useState<Application | null>(app)
+  if (current?.id !== app?.id) {
+    setCurrent(app)
+    setAnswers({})
+    setError('')
+  }
+  if (!app) return null
+
+  const act = async (fn: () => Promise<unknown>, close = true) => {
+    setBusy(true)
+    setError('')
+    try {
+      await fn()
+      onChanged()
+      if (close) onClose()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const unanswered = app.missing.filter((q) => !answers[q]?.trim())
+
+  return (
+    <Sheet open={!!app} onClose={onClose} label={`Application to ${app.startup_name}`}>
+      <div className="role-form">
+        <h2>{app.startup_name}</h2>
+        <p className="sheet-sub">
+          {app.title} · <StateChip state={app.state} />
+          {app.submitted_at && ` on ${new Date(`${app.submitted_at.replace(' ', 'T')}Z`).toLocaleDateString()}`}
+        </p>
+        {app.error && app.state !== 'submitted' && <p className="callout small">{app.error}</p>}
+
+        {app.state === 'needs_you' && app.missing.length > 0 && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              act(() => api.answerApplication(app.id, app.missing.map((q) => ({ question: q, answer: answers[q].trim() }))))
+            }}
+          >
+            <p className="small">Answer these and HireMe will finish the application. Your answers are saved for other forms that ask the same thing.</p>
+            {app.missing.map((q) => (
+              <label key={q} className="field">
+                <span>{q}</span>
+                <input value={answers[q] ?? ''} onChange={(e) => setAnswers((a) => ({ ...a, [q]: e.target.value }))} required />
+              </label>
+            ))}
+            <div className="sheet-actions">
+              <button className="btn primary" disabled={busy || unanswered.length > 0}>
+                Answer and apply
+              </button>
+            </div>
+          </form>
+        )}
+
+        {app.has_screenshot && (
+          <details className="shot">
+            <summary>What the form looked like</summary>
+            <img src={`/api/applications/${app.id}/screenshot?v=${encodeURIComponent(app.updated_at)}`} alt="Screenshot of the application form" loading="lazy" />
+          </details>
+        )}
+        {(app.answers.length > 0 || app.cover_note) && (
+          <details>
+            <summary>What HireMe sent</summary>
+            {app.answers.map((a, i) => (
+              <p key={i} className="small">
+                <strong>{a.question}</strong>
+                <br />
+                {a.answer} <span className="muted">({a.source === 'saved' ? 'your saved answer' : 'drafted from your profile'})</span>
+              </p>
+            ))}
+            {app.cover_note && <p className="small pre">{app.cover_note}</p>}
+          </details>
+        )}
+        {error && <p className="error">{error}</p>}
+        <div className="sheet-actions wrap">
+          {app.apply_url && ['needs_you', 'failed'].includes(app.state) && (
+            <a className="btn ghost" href={app.apply_url} target="_blank" rel="noreferrer noopener">
+              Finish on their site
+            </a>
+          )}
+          {['needs_you', 'failed'].includes(app.state) && (
+            <button className="btn ghost" disabled={busy} onClick={() => act(() => api.selfApplied(app.id))}>
+              I applied myself
+            </button>
+          )}
+          {app.state === 'failed' && app.role_status === 'open' && (
+            <button className="btn ghost" disabled={busy} onClick={() => act(() => api.retryApplication(app.id))}>
+              Try again
+            </button>
+          )}
+          {['queued', 'needs_you', 'failed'].includes(app.state) && (
+            <button className="link-btn quiet" disabled={busy} onClick={() => act(() => api.cancelApplication(app.id))}>
+              Cancel
+            </button>
+          )}
+          <button className="btn primary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </Sheet>
   )
 }

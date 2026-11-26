@@ -28,11 +28,28 @@ ycombinator.com itself is never scraped; its terms of use don't allow it.
 
 Imported startups are **listed**, not verified members. When a developer says yes to one of their roles, HireMe points them to the company's own application page and keeps the yes. A founder who signs in with a work email on that startup's domain can **claim** it: it goes live right away (the email proves they work there, and the size comes from YC's directory), they see every developer who already said yes, and their job board keeps syncing. Admins get an email for each claim and can run or watch imports from the Admin tab. Set `IMPORT_JOBS=off` to disable the schedule.
 
+## Applying for developers
+
+For imported startups (not on HireMe yet), HireMe can apply for the developer, like Sprout (`server/src/apply/`):
+
+1. The first time a developer says yes to one, HireMe asks for what forms need (phone, US work authorization, sponsorship, a resume PDF or their experience) and for consent to apply automatically.
+2. After that, every yes queues an application. A background worker opens the company's form in headless Chromium, fills it from the profile, attaches their resume (uploaded, or generated from the profile) and a cover note, and submits. It checks for a confirmation and keeps a screenshot.
+3. Open-ended questions ("Why do you want to work here?") are drafted by Claude from the profile and job post when `ANTHROPIC_API_KEY` is set (otherwise a short template). **Factual questions are never drafted**: work authorization, sponsorship, salary, start date, location, demographics and similar come only from the developer.
+4. Anything it can't finish (a CAPTCHA, a question only the developer can answer, a form error) shows up under **Matches → Applications** as "Needs you". Answers given there are saved and reused on later forms. Developers can always finish on the company's site instead.
+
+Limits: one application at a time, 30 per developer per day. HireMe never solves CAPTCHAs. Admins can check compatibility with **Test on a real job form**, which fills a real imported role's form with a made-up applicant and never submits.
+
+| Variable | What it does |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | Optional. Drafts open-ended answers and cover notes (`ANTHROPIC_MODEL` defaults to `claude-haiku-5-5`) |
+| `CHROME_PATH` | Optional. Use an installed Chrome instead of Playwright's Chromium |
+
 ## Privacy
 
 - Emails are never shown to the other side. People talk in the in-app chat and can share contact details when they choose.
 - Founders only see developers once their startup is approved. Developers can hide their profile at any time.
-- Anyone can delete their account, which removes their profile, swipes, matches and messages.
+- Anyone can delete their account, which removes their profile, swipes, matches, messages, applications, resume file and screenshots.
+- Resumes and form screenshots are stored on the server's disk next to the database and are only served to their owner.
 
 ## Run it locally
 

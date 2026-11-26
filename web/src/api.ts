@@ -1,5 +1,6 @@
 import type {
   AdminQueue,
+  Application,
   DevCard,
   DevProfile,
   MatchDetail,
@@ -54,6 +55,14 @@ export const api = {
 
   profile: () => call<DevProfile>('GET', '/profile'),
   saveProfile: (p: DevProfile) => call<DevProfile>('PUT', '/profile', p),
+  uploadResume: (name: string, data: string) => call<{ resume_name: string }>('POST', '/profile/resume', { name, data }),
+  deleteResume: () => call<void>('DELETE', '/profile/resume'),
+  applications: () => call<Application[]>('GET', '/applications'),
+  apply: (roleId: number, consent: boolean) => call<Application>('POST', '/applications', { roleId, consent }),
+  answerApplication: (id: number, answers: { question: string; answer: string }[]) => call<Application>('POST', `/applications/${id}/answers`, { answers }),
+  retryApplication: (id: number) => call<Application>('POST', `/applications/${id}/retry`),
+  selfApplied: (id: number) => call<void>('POST', `/applications/${id}/self`),
+  cancelApplication: (id: number) => call<void>('DELETE', `/applications/${id}`),
 
   startup: () => call<MyStartup | null>('GET', '/startup'),
   createStartup: (s: Partial<Startup> & { confirmNotAgency: boolean; title?: string }) => call<Startup>('POST', '/startup', s),
@@ -82,7 +91,27 @@ export const api = {
   review: (id: number, status: StartupStatus, note = '') => call<Startup>('POST', `/admin/startups/${id}`, { status, note }),
   resolveReport: (id: number) => call<void>('POST', `/admin/reports/${id}/resolve`),
   importStatus: () => call<{ running: boolean; runs: ImportRun[] }>('GET', '/admin/import'),
+  applierStatus: () =>
+    call<{ running: boolean; current: { id: number } | null; last: { id: number; state: string; error: string; at: string } | null; counts: Record<string, number>; ai: boolean }>(
+      'GET',
+      '/admin/applier',
+    ),
+  applierTest: (roleId?: number) =>
+    call<{ role: { id: number; title: string; startup: string; url: string }; state: string; error: string; missing: string[]; answers: Application['answers']; fieldsFilled: number; screenshot: string }>(
+      'POST',
+      '/admin/applier-test',
+      { roleId },
+    ),
   runImport: () => call<{ running: boolean; already: boolean }>('POST', '/admin/import'),
+}
+
+/** Reads a PDF the person picked and uploads it as their resume. */
+export async function uploadResumeFile(file: File) {
+  if (file.size > 4 * 1024 * 1024) throw new ApiError('That PDF is over 4 MB', 400, {})
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return api.uploadResume(file.name, btoa(bin))
 }
 
 export const money = (n: number | null | undefined) => (n ? `$${n >= 1000 ? `${Math.round(n / 1000)}k` : n}` : '')

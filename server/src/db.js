@@ -178,7 +178,35 @@ export function openDb(file = DB_PATH) {
     ['apply_url', 'TEXT'],
     ['posted_at', 'TEXT'],
   ]);
+  // What HireMe needs to apply on a developer's behalf.
+  addColumns('dev_profiles', [
+    ['phone', "TEXT NOT NULL DEFAULT ''"],
+    ['work_authorized', "TEXT NOT NULL DEFAULT ''"], // yes | no | ''
+    ['needs_sponsorship', "TEXT NOT NULL DEFAULT ''"],
+    ['resume_file', 'TEXT'], // stored under <data>/resumes
+    ['resume_name', 'TEXT'],
+    ['auto_apply', 'INTEGER NOT NULL DEFAULT 0'], // consent to apply automatically on a yes
+    ['saved_answers', "TEXT NOT NULL DEFAULT '[]'"], // [{question, answer}]
+  ]);
   db.exec(`
+    -- Applications HireMe submits for developers to startups that aren't on HireMe yet.
+    CREATE TABLE IF NOT EXISTS applications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dev_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      state TEXT NOT NULL DEFAULT 'queued', -- queued | running | submitted | needs_you | failed | canceled | self_applied
+      error TEXT NOT NULL DEFAULT '',
+      missing TEXT NOT NULL DEFAULT '[]',   -- questions only the developer can answer
+      answers TEXT NOT NULL DEFAULT '[]',   -- what was sent for open questions, and where it came from
+      cover_note TEXT NOT NULL DEFAULT '',
+      screenshot TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      submitted_at TEXT,
+      UNIQUE (dev_id, role_id)
+    );
+    CREATE INDEX IF NOT EXISTS applications_queue ON applications (state, updated_at);
     CREATE UNIQUE INDEX IF NOT EXISTS roles_external ON roles (startup_id, external_id) WHERE external_id IS NOT NULL;
     CREATE INDEX IF NOT EXISTS roles_open ON roles (status, startup_id);
     CREATE INDEX IF NOT EXISTS startups_status ON startups (status);

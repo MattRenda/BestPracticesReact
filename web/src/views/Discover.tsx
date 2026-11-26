@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, salaryRange, WORK_LABEL } from '../api'
 import type { DevCard, Me, MyStartup, RoleCard } from '../types'
 import { Deck } from '../components/Deck'
+import { ApplySetup } from '../components/ApplySetup'
+import type { ApplyField } from '../types'
 import { Chips, ReportButton, Sheet, Toast } from '../components/ui'
 import { useToast } from '../lib'
 
@@ -45,6 +47,7 @@ export function DevDiscover({ onChange }: { onChange: () => void }) {
   const [note, setNote] = useState('')
   const [match, setMatch] = useState<{ id: number; name: string } | null>(null)
   const [outside, setOutside] = useState<{ name: string; url: string } | null>(null)
+  const [setup, setSetup] = useState<{ roleId: number; startupName: string; applyUrl: string; missing: ApplyField[]; consented: boolean } | null>(null)
   const [toast, setToast] = useToast()
 
   const load = useCallback(() => {
@@ -57,6 +60,9 @@ export function DevDiscover({ onChange }: { onChange: () => void }) {
       try {
         const r = await api.swipeRole(card.id, liked)
         if (r.matched && r.matchId) setMatch({ id: r.matchId, name: card.startup.name })
+        else if (liked && r.application) setToast(`Applying to ${card.startup.name} for you. Track it in Matches.`)
+        else if (liked && r.applySetup && r.external)
+          setSetup({ roleId: card.id, startupName: card.startup.name, applyUrl: r.external.apply_url, missing: r.applySetup.missing, consented: r.applySetup.consented })
         else if (liked && r.external) setOutside({ name: card.startup.name, url: r.external.apply_url })
         else if (liked) {
           setNote('')
@@ -159,6 +165,14 @@ export function DevDiscover({ onChange }: { onChange: () => void }) {
         </form>
       </Sheet>
       <MatchSheet match={match} onClose={() => setMatch(null)} />
+      <ApplySetup
+        target={setup}
+        onClose={() => setSetup(null)}
+        onQueued={(name) => {
+          setToast(`Applying to ${name} for you. Track it in Matches.`)
+          onChange()
+        }}
+      />
       <Sheet open={!!outside} onClose={() => setOutside(null)} label="Apply on their site">
         <form method="dialog">
           <h2>Apply on {outside?.name}’s site</h2>
@@ -186,7 +200,7 @@ function RoleCardView({ c, onReported }: { c: RoleCard; onReported: () => void }
   return (
     <>
       {c.interested && <p className="ribbon">{s.name} is interested in you</p>}
-      {c.external && !c.interested && <p className="ribbon quiet">From YC’s startup directory · not on HireMe yet</p>}
+      {c.external && !c.interested && <p className="ribbon quiet">Not on HireMe yet · say yes and HireMe applies for you</p>}
       <header className="card-head">
         <h2 className="card-company">{s.name}</h2>
         <p className="card-size">

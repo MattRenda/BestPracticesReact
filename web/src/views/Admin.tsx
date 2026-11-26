@@ -45,6 +45,7 @@ export function AdminView({ onChange }: { onChange: () => void }) {
       </header>
 
       <ImportPanel listed={q.stats.listed} importedRoles={q.stats.importedRoles} onDone={load} />
+      <ApplierPanel />
 
       {q.reports.length > 0 && (
         <section className="group">
@@ -187,6 +188,68 @@ function ImportPanel({ listed, importedRoles, onDone }: { listed: number; import
           </ul>
         </details>
       ) : null}
+      {error && <p className="error">{error}</p>}
+    </section>
+  )
+}
+
+function ApplierPanel() {
+  const [st, setSt] = useState<Awaited<ReturnType<typeof api.applierStatus>> | null>(null)
+  const [test, setTest] = useState<Awaited<ReturnType<typeof api.applierTest>> | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    api.applierStatus().then(setSt, (e: Error) => setError(e.message))
+  }, [])
+  const c = st?.counts ?? {}
+  return (
+    <section className="group">
+      <div className="group-row">
+        <h2 className="group-title">Applying for developers</h2>
+        <button
+          className="btn ghost small"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            setError('')
+            api.applierTest().then(setTest, (e: Error) => setError(e.message)).finally(() => setBusy(false))
+          }}
+        >
+          {busy ? 'Testing… (up to a minute)' : 'Test on a real job form'}
+        </button>
+      </div>
+      <p className="small">
+        {c.submitted ?? 0} submitted · {c.needs_you ?? 0} need the developer · {c.failed ?? 0} failed · {(c.queued ?? 0) + (c.running ?? 0)} in progress.{' '}
+        {st && (st.ai ? 'Claude drafts open-ended answers.' : 'No ANTHROPIC_API_KEY set, so open-ended answers use a basic template.')}
+      </p>
+      {st?.last && (
+        <p className="muted small">
+          Last: application #{st.last.id} {st.last.state}
+          {st.last.error ? ` (${st.last.error})` : ''} {ago(st.last.at)}
+        </p>
+      )}
+      {test && (
+        <div className="callout small">
+          <p>
+            <strong>
+              {test.role.startup}: {test.role.title}
+            </strong>{' '}
+            <a href={test.role.url} target="_blank" rel="noreferrer noopener">
+              form
+            </a>
+          </p>
+          <p>
+            Filled {test.fieldsFilled} fields with a made-up applicant (nothing was submitted). Result: {test.state === 'practiced' ? 'ready to submit' : test.error}
+          </p>
+          {test.missing.length > 0 && <p>Would ask the developer: {test.missing.join('; ')}</p>}
+          {test.screenshot && (
+            <details>
+              <summary>Screenshot</summary>
+              <img className="shot-img" src={`data:image/jpeg;base64,${test.screenshot}`} alt="The filled form" />
+            </details>
+          )}
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
     </section>
   )

@@ -458,3 +458,16 @@ a { color: var(--moss); }
 .saved h2 { font-size: var(--t-lg); padding: 0 16px; margin-bottom: 2px; }
 .saved > p { padding: 0 16px; margin: 0 0 8px; }
 @media (max-width: 720px) { .saved h2, .saved > p { padding: 0; } }
+
+.thread-btn { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; padding: 11px 16px; color: var(--ink); border-top: 1px solid var(--rule); cursor: pointer; }
+.thread-btn:hover, .thread-btn:focus-visible { background: var(--paper); }
+@media (max-width: 720px) { .thread-btn { padding: 11px 0; } }
+.field-label { font-weight: 700; font-size: var(--t-sm); }
+.resume-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 4px 0 0; }
+.upload { position: relative; overflow: hidden; cursor: pointer; }
+.upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.row-inline { display: flex; gap: 10px; align-items: center; }
+.saved-answers summary, .shot summary, .role-form details summary { cursor: pointer; font-weight: 700; font-size: var(--t-sm); margin: 10px 0 6px; }
+.shot img, .shot-img { width: 100%; border: 1px solid var(--rule); border-radius: 8px; margin-top: 6px; }
+.sheet-actions.wrap { flex-wrap: wrap; }
+.callout.small { font-size: var(--t-sm); }

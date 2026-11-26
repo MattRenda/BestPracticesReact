@@ -28,6 +28,40 @@ export interface DevProfile {
   salary_min?: number | null
   visible?: boolean
   complete?: boolean
+  // Applying for you
+  phone?: string
+  work_authorized?: '' | 'yes' | 'no'
+  needs_sponsorship?: '' | 'yes' | 'no'
+  has_resume?: boolean
+  resume_name?: string | null
+  auto_apply?: boolean
+  saved_answers?: { question: string; answer: string }[]
+  applyMissing?: ApplyField[]
+}
+
+export type ApplyField = 'name' | 'phone' | 'work_authorized' | 'needs_sponsorship' | 'resume'
+
+export type ApplicationState = 'queued' | 'running' | 'submitted' | 'needs_you' | 'failed' | 'canceled' | 'self_applied'
+
+export interface Application {
+  id: number
+  role_id: number
+  state: ApplicationState
+  error: string
+  missing: string[]
+  answers: { question: string; answer: string; source: 'saved' | 'drafted' }[]
+  cover_note: string
+  has_screenshot: boolean
+  created_at: string
+  updated_at: string
+  submitted_at: string | null
+  // list only
+  title?: string
+  apply_url?: string
+  role_status?: 'open' | 'closed'
+  startup_name?: string
+  domain?: string
+  headcount?: number
 }
 
 export type StartupStatus = 'pending' | 'approved' | 'rejected' | 'listed' | 'retired'
@@ -73,7 +107,7 @@ export interface MyStartup extends Startup {
 
 export interface Me {
   user: User | null
-  counts?: { unread: number; interested?: number; pendingStartups?: number; openReports?: number }
+  counts?: { unread: number; interested?: number; pendingStartups?: number; openReports?: number; needsYou?: number }
   profile?: DevProfile | null
   profileComplete?: boolean
   startup?: Startup | null
@@ -111,6 +145,8 @@ export interface SwipeResult {
   matched: boolean
   matchId: number | null
   external?: { apply_url: string } | null
+  application?: Application | null
+  applySetup?: { missing: ApplyField[]; consented: boolean } | null
 }
 
 export interface SavedRole {

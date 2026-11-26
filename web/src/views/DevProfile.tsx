@@ -1,7 +1,8 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
-import { api } from '../api'
+import { api, uploadResumeFile } from '../api'
 import type { DevProfile, WorkPref } from '../types'
 import { Toast } from '../components/ui'
+import { CONSENT_TEXT } from '../components/ApplySetup'
 import { useToast } from '../lib'
 
 const PREFS: [WorkPref, string][] = [
@@ -133,6 +134,8 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
           </label>
         </fieldset>
 
+        <ApplyingSection p={p} update={update} onResume={(patch) => setP((cur) => ({ ...cur, ...patch }))} toast={setToast} />
+
         <fieldset className="group">
           <legend>Links</legend>
           <div className="row2">
@@ -203,5 +206,119 @@ export function DeleteAccount() {
         Delete my account
       </button>
     </p>
+  )
+}
+
+/** Phone, work authorization, resume and saved answers: what HireMe uses to apply for you. */
+function ApplyingSection({
+  p,
+  update,
+  onResume,
+  toast,
+}: {
+  p: DevProfile
+  update: (patch: Partial<DevProfile>) => void
+  onResume: (patch: Partial<DevProfile>) => void
+  toast: (m: string) => void
+}) {
+  const [uploading, setUploading] = useState(false)
+  const yesNo = (k: 'work_authorized' | 'needs_sponsorship', legend: string) => (
+    <fieldset className="field radios inline">
+      <legend>{legend}</legend>
+      {(['yes', 'no'] as const).map((v) => (
+        <label key={v}>
+          <input type="radio" name={k} checked={p[k] === v} onChange={() => update({ [k]: v })} />
+          {v === 'yes' ? 'Yes' : 'No'}
+        </label>
+      ))}
+    </fieldset>
+  )
+
+  async function upload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    try {
+      const r = await uploadResumeFile(file)
+      onResume({ has_resume: true, resume_name: r.resume_name })
+      toast('Resume uploaded')
+    } catch (err) {
+      toast((err as Error).message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const answers = p.saved_answers ?? []
+  return (
+    <fieldset className="group">
+      <legend>Applying for you</legend>
+      <p className="group-note">For startups that aren’t on HireMe yet, HireMe can fill out and submit their application when you say yes.</p>
+      <label className="toggle">
+        <input type="checkbox" checked={!!p.auto_apply} onChange={(e) => update({ auto_apply: e.target.checked })} />
+        <span className="toggle-track" aria-hidden="true" />
+        <span className="toggle-text">
+          <span>Apply for me</span>
+          <small>{CONSENT_TEXT}</small>
+        </span>
+      </label>
+      <label className="field">
+        <span>Phone</span>
+        <input type="tel" autoComplete="tel" value={p.phone ?? ''} onChange={(e) => update({ phone: e.target.value })} />
+      </label>
+      {yesNo('work_authorized', 'Authorized to work in the US?')}
+      {yesNo('needs_sponsorship', 'Need visa sponsorship?')}
+      <div className="field">
+        <span className="field-label">Resume</span>
+        {p.has_resume ? (
+          <p className="resume-row">
+            <a href="/api/profile/resume" target="_blank" rel="noreferrer">
+              {p.resume_name || 'Resume.pdf'}
+            </a>
+            <label className="link-btn upload">
+              Replace
+              <input type="file" accept="application/pdf,.pdf" onChange={upload} />
+            </label>
+            <button
+              type="button"
+              className="link-btn quiet"
+              onClick={() => api.deleteResume().then(() => onResume({ has_resume: false, resume_name: null }), (e: Error) => toast(e.message))}
+            >
+              Remove
+            </button>
+          </p>
+        ) : (
+          <p className="resume-row">
+            <span className="muted small">None uploaded. HireMe makes one from your experience above.</span>
+            <label className="btn ghost small upload">
+              {uploading ? 'Uploading…' : 'Upload PDF'}
+              <input type="file" accept="application/pdf,.pdf" onChange={upload} disabled={uploading} />
+            </label>
+          </p>
+        )}
+      </div>
+      {answers.length > 0 && (
+        <details className="saved-answers">
+          <summary>
+            {answers.length} saved answer{answers.length === 1 ? '' : 's'} HireMe reuses on forms
+          </summary>
+          {answers.map((a, i) => (
+            <label key={i} className="field">
+              <span>{a.question}</span>
+              <span className="row-inline">
+                <input
+                  value={a.answer}
+                  onChange={(e) => update({ saved_answers: answers.map((x, j) => (j === i ? { ...x, answer: e.target.value } : x)) })}
+                />
+                <button type="button" className="link-btn quiet" onClick={() => update({ saved_answers: answers.filter((_, j) => j !== i) })}>
+                  Remove
+                </button>
+              </span>
+            </label>
+          ))}
+        </details>
+      )}
+    </fieldset>
   )
 }

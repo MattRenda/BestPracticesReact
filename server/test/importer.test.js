@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../src/app.js';
@@ -52,7 +55,7 @@ const quiet = { info() {}, warn() {}, error() {} };
 let server, base, app;
 before(async () => {
   resetWorld();
-  app = createApp(openDb(':memory:'), { mailer, adminEmails: ['admin@hireme.test'], log: quiet, ipLimit: 1000, fetchImpl: fakeFetch });
+  app = createApp(openDb(':memory:'), { mailer, adminEmails: ['admin@hireme.test'], log: quiet, ipLimit: 1000, dataDir: mkdtempSync(path.join(tmpdir(), 'hireme-')), applierOptions: { autoStart: false }, fetchImpl: fakeFetch });
   server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}/api`;

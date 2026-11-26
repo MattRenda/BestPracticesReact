@@ -71,7 +71,7 @@ export default function App() {
   const labels: Record<string, string> = { discover: 'Discover', matches: 'Matches', profile: 'Profile', startup: 'Startup', admin: 'Admin' }
   const badges: Record<string, number> = {
     discover: counts?.interested ?? 0,
-    matches: counts?.unread ?? 0,
+    matches: (counts?.unread ?? 0) + (counts?.needsYou ?? 0),
     admin: (counts?.pendingStartups ?? 0) + (counts?.openReports ?? 0),
   }
 
