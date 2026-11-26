@@ -2,7 +2,7 @@
 #   fly volumes create hireme_data --size 1
 #   fly secrets set PUBLIC_URL=https://<your-app>.fly.dev ADMIN_EMAILS=you@example.com SMTP_URL=smtps://... MAIL_FROM="HireMe <hello@yourdomain>"
 #   fly deploy
-app = "hireme"
+app = "hireme-startups"
 primary_region = "sjc"
 
 [build]

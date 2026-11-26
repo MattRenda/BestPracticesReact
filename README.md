@@ -64,7 +64,7 @@ Any host that runs a Dockerfile with a volume mounted at `/data` works the same 
 | --- | --- |
 | `PUBLIC_URL` | Public address, used in emails and to mark cookies `Secure` |
 | `ADMIN_EMAILS` | Comma-separated emails that get the Admin tab and new-startup emails |
-| `SMTP_URL`, `MAIL_FROM` | Outgoing email for sign-in links, matches and message nudges |
+| `SMTP_URL`, `SMTP_PASS`, `MAIL_FROM` | Outgoing email for sign-in links, matches and message nudges. For Gmail: `SMTP_URL=smtps://you%40gmail.com@smtp.gmail.com:465`, `SMTP_PASS=<app password>`, `MAIL_FROM=HireMe <you@gmail.com>` |
 | `DB_PATH` | SQLite file (default `server/data/hireme.db`; `/data/hireme.db` in Docker) |
 
 Back up the SQLite file regularly (for example `fly ssh console -C "sqlite3 /data/hireme.db .dump"` or a volume snapshot).

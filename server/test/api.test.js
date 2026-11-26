@@ -239,3 +239,11 @@ test('accounts: role is fixed once set up, and accounts can be deleted', async (
   assert.equal((await dev.req('DELETE', '/me')).status, 204);
   assert.equal((await dev.req('GET', '/me')).body.user, null);
 });
+
+test('smtp settings parse, with the password kept separately', async () => {
+  const { smtpOptions } = await import('../src/mail.js');
+  assert.deepEqual(smtpOptions('smtps://me%40gmail.com@smtp.gmail.com:465', 'app-pass'), {
+    host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: 'me@gmail.com', pass: 'app-pass' },
+  });
+  assert.equal(smtpOptions('smtp://u:p@mail.example:587').auth.pass, 'p');
+});
