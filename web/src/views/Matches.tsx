@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, salaryRange, WORK_LABEL } from '../api'
-import type { MatchDetail, MatchSummary, Me, Message } from '../types'
+import type { MatchDetail, MatchSummary, Me, Message, SavedRole } from '../types'
 import { Chips, ReportButton, Toast } from '../components/ui'
 import { ago, useToast } from '../lib'
 
 export function Matches({ me, openId, onChange }: { me: Me; openId: number | null; onChange: () => void }) {
   const [list, setList] = useState<MatchSummary[] | null>(null)
+  const [saved, setSaved] = useState<SavedRole[]>([])
   const isDev = me.user?.role === 'dev'
+  useEffect(() => {
+    if (isDev) api.saved().then(setSaved, () => {})
+  }, [isDev])
 
   const load = useCallback(() => api.matches().then(setList, () => {}), [])
   useEffect(() => {
@@ -51,6 +55,26 @@ export function Matches({ me, openId, onChange }: { me: Me; openId: number | nul
               </li>
             ))}
           </ul>
+        )}
+        {saved.length > 0 && (
+          <section className="saved">
+            <h2>Apply on their site</h2>
+            <p className="muted small">You said yes to these, but the startups aren’t on HireMe yet.</p>
+            <ul className="threads">
+              {saved.map((r) => (
+                <li key={r.id}>
+                  <a href={r.apply_url} target="_blank" rel="noreferrer noopener" className={r.status === 'closed' ? 'closed' : ''}>
+                    <span className="t-top">
+                      <strong>{r.startup_name}</strong>
+                      <time>{ago(r.liked_at)}</time>
+                    </span>
+                    <span className="t-role">{r.title}</span>
+                    <span className="t-last">{r.status === 'closed' ? 'No longer posted' : 'Open application ↗'}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
       </div>
       <div className="thread-pane">

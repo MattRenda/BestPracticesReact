@@ -75,7 +75,7 @@ function NewStartup({ me, onDone }: { me: Me; onDone: () => void }) {
   const [f, setF] = useState({ name: '', website: domain ? `https://${domain}` : '', headcount: '', stage: '', one_liner: '', about: '', location: '', title: '' })
   const [confirm, setConfirm] = useState(false)
   const [error, setError] = useState('')
-  const [existing, setExisting] = useState<{ id: number; name: string } | null>(me.joinable ?? null)
+  const [existing, setExisting] = useState<{ id: number; name: string; claimable?: boolean } | null>(me.joinable ?? null)
   const [busy, setBusy] = useState(false)
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((cur) => ({ ...cur, [k]: e.target.value }))
 
@@ -88,7 +88,7 @@ function NewStartup({ me, onDone }: { me: Me; onDone: () => void }) {
       location.hash = '#/startup'
       onDone()
     } catch (err) {
-      const ex = (err as ApiError).data?.existing as { id: number; name: string } | undefined
+      const ex = (err as ApiError).data?.existing as { id: number; name: string; claimable?: boolean } | undefined
       if (ex) setExisting(ex)
       setError((err as Error).message)
     } finally {
@@ -115,15 +115,22 @@ function NewStartup({ me, onDone }: { me: Me; onDone: () => void }) {
 
       {existing && (
         <div className="callout">
-          <p>
-            <strong>{existing.name}</strong> is already on HireMe with your email domain.
-          </p>
+          {existing.claimable ? (
+            <p>
+              We already list <strong>{existing.name}</strong> from YC’s startup directory, with the engineering roles from your job board. Claim it to see which developers said
+              yes and to start swiping. Your work email is the verification.
+            </p>
+          ) : (
+            <p>
+              <strong>{existing.name}</strong> is already on HireMe with your email domain.
+            </p>
+          )}
           <label className="field">
             <span>Your title (optional)</span>
             <input value={f.title} onChange={set('title')} placeholder="CTO" />
           </label>
           <button className="btn primary" onClick={join}>
-            Join {existing.name}
+            {existing.claimable ? 'Claim' : 'Join'} {existing.name}
           </button>
         </div>
       )}

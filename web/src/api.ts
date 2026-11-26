@@ -5,7 +5,9 @@ import type {
   MatchDetail,
   MatchSummary,
   Me,
+  ImportRun,
   MyStartup,
+  SavedRole,
   RoleCard,
   RoleListing,
   Startup,
@@ -63,6 +65,7 @@ export const api = {
   roleDeck: () => call<RoleCard[]>('GET', '/deck'),
   swipeRole: (roleId: number, liked: boolean, note = '') => call<SwipeResult>('POST', `/deck/${roleId}`, { liked, note }),
   undoRole: (roleId: number) => call<void>('DELETE', `/deck/${roleId}`),
+  saved: () => call<SavedRole[]>('GET', '/saved'),
   devDeck: (roleId: number) => call<DevCard[]>('GET', `/deck/devs?role=${roleId}`),
   swipeDev: (roleId: number, devId: number, liked: boolean) => call<SwipeResult>('POST', `/deck/devs/${devId}`, { role: roleId, liked }),
   undoDev: (roleId: number, devId: number) => call<void>('DELETE', `/deck/devs/${devId}?role=${roleId}`),
@@ -78,6 +81,8 @@ export const api = {
   adminQueue: () => call<AdminQueue>('GET', '/admin/queue'),
   review: (id: number, status: StartupStatus, note = '') => call<Startup>('POST', `/admin/startups/${id}`, { status, note }),
   resolveReport: (id: number) => call<void>('POST', `/admin/reports/${id}/resolve`),
+  importStatus: () => call<{ running: boolean; runs: ImportRun[] }>('GET', '/admin/import'),
+  runImport: () => call<{ running: boolean; already: boolean }>('POST', '/admin/import'),
 }
 
 export const money = (n: number | null | undefined) => (n ? `$${n >= 1000 ? `${Math.round(n / 1000)}k` : n}` : '')

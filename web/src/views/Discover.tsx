@@ -44,6 +44,7 @@ export function DevDiscover({ onChange }: { onChange: () => void }) {
   const [noteFor, setNoteFor] = useState<RoleCard | null>(null)
   const [note, setNote] = useState('')
   const [match, setMatch] = useState<{ id: number; name: string } | null>(null)
+  const [outside, setOutside] = useState<{ name: string; url: string } | null>(null)
   const [toast, setToast] = useToast()
 
   const load = useCallback(() => {
@@ -56,6 +57,7 @@ export function DevDiscover({ onChange }: { onChange: () => void }) {
       try {
         const r = await api.swipeRole(card.id, liked)
         if (r.matched && r.matchId) setMatch({ id: r.matchId, name: card.startup.name })
+        else if (liked && r.external) setOutside({ name: card.startup.name, url: r.external.apply_url })
         else if (liked) {
           setNote('')
           setNoteFor(card)
@@ -157,6 +159,22 @@ export function DevDiscover({ onChange }: { onChange: () => void }) {
         </form>
       </Sheet>
       <MatchSheet match={match} onClose={() => setMatch(null)} />
+      <Sheet open={!!outside} onClose={() => setOutside(null)} label="Apply on their site">
+        <form method="dialog">
+          <h2>Apply on {outside?.name}’s site</h2>
+          <p className="sheet-sub">
+            {outside?.name} hasn’t joined HireMe yet, so this one goes through their own application. We saved your yes: if they join, they’ll see you were interested. You can find it later under Matches.
+          </p>
+          <div className="sheet-actions">
+            <button className="btn ghost" onClick={() => setOutside(null)}>
+              Later
+            </button>
+            <a className="btn primary" href={outside?.url} target="_blank" rel="noreferrer noopener" onClick={() => setOutside(null)}>
+              Open application
+            </a>
+          </div>
+        </form>
+      </Sheet>
       <Toast msg={toast} />
     </section>
   )
@@ -168,6 +186,7 @@ function RoleCardView({ c, onReported }: { c: RoleCard; onReported: () => void }
   return (
     <>
       {c.interested && <p className="ribbon">{s.name} is interested in you</p>}
+      {c.external && !c.interested && <p className="ribbon quiet">From YC’s startup directory · not on HireMe yet</p>}
       <header className="card-head">
         <h2 className="card-company">{s.name}</h2>
         <p className="card-size">
@@ -190,9 +209,16 @@ function RoleCardView({ c, onReported }: { c: RoleCard; onReported: () => void }
         )}
       </div>
       <footer className="card-foot">
-        <a className="card-link" href={s.website} target="_blank" rel="noreferrer noopener">
-          {s.domain}
-        </a>
+        <span className="card-links">
+          <a className="card-link" href={s.website} target="_blank" rel="noreferrer noopener">
+            {s.domain}
+          </a>
+          {c.external && (
+            <a className="card-link" href={c.external.apply_url} target="_blank" rel="noreferrer noopener">
+              Original posting
+            </a>
+          )}
+        </span>
         <ReportButton type="startup" id={s.id} name={s.name} onDone={onReported} />
       </footer>
     </>

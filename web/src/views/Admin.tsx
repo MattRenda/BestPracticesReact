@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import type { AdminQueue, AdminStartup, StartupStatus } from '../types'
+import type { AdminQueue, AdminStartup, ImportRun, StartupStatus } from '../types'
 import { Toast } from '../components/ui'
 import { ago, useToast } from '../lib'
 
@@ -43,6 +43,8 @@ export function AdminView({ onChange }: { onChange: () => void }) {
           {q.stats.devs} developers · {q.stats.founders} founders · {q.stats.openRoles} live roles · {q.stats.matches} {q.stats.matches === 1 ? 'match' : 'matches'}
         </p>
       </header>
+
+      <ImportPanel listed={q.stats.listed} importedRoles={q.stats.importedRoles} onDone={load} />
 
       {q.reports.length > 0 && (
         <section className="group">
@@ -122,6 +124,70 @@ export function AdminView({ onChange }: { onChange: () => void }) {
         <p className="muted small">Before approving: open the website, check the team size (LinkedIn company page is a good cross-check), and make sure they’re not a recruiting or outsourcing firm.</p>
       </section>
       <Toast msg={toast} />
+    </section>
+  )
+}
+
+function ImportPanel({ listed, importedRoles, onDone }: { listed: number; importedRoles: number; onDone: () => void }) {
+  const [state, setState] = useState<{ running: boolean; runs: ImportRun[] } | null>(null)
+  const [error, setError] = useState('')
+  const refresh = useCallback(() => api.importStatus().then(setState, (e: Error) => setError(e.message)), [])
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+  // While a run is going, check every few seconds
+  useEffect(() => {
+    if (!state?.running) return
+    const t = setInterval(() => {
+      api.importStatus().then((s) => {
+        setState(s)
+        if (!s.running) onDone()
+      }, () => {})
+    }, 4000)
+    return () => clearInterval(t)
+  }, [state?.running, onDone])
+
+  const last = state?.runs[0]
+  return (
+    <section className="group">
+      <div className="group-row">
+        <h2 className="group-title">Imported jobs</h2>
+        <button
+          className="btn ghost small"
+          disabled={!state || state.running}
+          onClick={() =>
+            api.runImport().then(
+              () => setState((s) => s && { ...s, running: true }),
+              (e: Error) => setError(e.message),
+            )
+          }
+        >
+          {state?.running ? 'Importing…' : 'Run import now'}
+        </button>
+      </div>
+      <p className="small">
+        {importedRoles} engineering roles from {listed} YC startups with 50 or fewer people that haven’t joined HireMe yet. Runs automatically twice a day; founders who sign in with
+        a matching work email can claim their startup.
+      </p>
+      {last && (
+        <p className="muted small">
+          Last run {ago(last.started_at)}
+          {last.finished_at
+            ? `: ${last.companies ?? 0} startups checked, ${last.boards ?? 0} job boards, ${last.roles_added ?? 0} new roles, ${last.roles_closed ?? 0} closed.`
+            : ' — still running.'}
+        </p>
+      )}
+      {last?.errors?.length ? (
+        <details className="small">
+          <summary>{last.errors.length} problems in the last run</summary>
+          <ul>
+            {last.errors.slice(0, 20).map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {error && <p className="error">{error}</p>}
     </section>
   )
 }

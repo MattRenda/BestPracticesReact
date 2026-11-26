@@ -30,7 +30,7 @@ export interface DevProfile {
   complete?: boolean
 }
 
-export type StartupStatus = 'pending' | 'approved' | 'rejected'
+export type StartupStatus = 'pending' | 'approved' | 'rejected' | 'listed' | 'retired'
 
 export interface Startup {
   id: number
@@ -44,6 +44,8 @@ export interface Startup {
   location: string
   status?: StartupStatus
   review_note?: string
+  /** False for startups imported from YC's directory whose founders haven't joined. */
+  onHireMe?: boolean
 }
 
 export interface RoleListing {
@@ -75,12 +77,15 @@ export interface Me {
   profile?: DevProfile | null
   profileComplete?: boolean
   startup?: Startup | null
-  joinable?: { id: number; name: string; status: StartupStatus } | null
+  joinable?: { id: number; name: string; status: StartupStatus; claimable: boolean } | null
 }
 
 /** A role card in a developer's deck. */
 export interface RoleCard extends Omit<RoleListing, 'interested' | 'matches'> {
   interested: boolean
+  /** Set when the startup isn't on HireMe yet: apply on their own site. */
+  external: { apply_url: string } | null
+  posted_at: string | null
   sharedSkills: string[]
   startup: Startup
 }
@@ -105,6 +110,31 @@ export interface DevCard {
 export interface SwipeResult {
   matched: boolean
   matchId: number | null
+  external?: { apply_url: string } | null
+}
+
+export interface SavedRole {
+  id: number
+  title: string
+  apply_url: string
+  status: 'open' | 'closed'
+  liked_at: string
+  startup_name: string
+  domain: string
+  headcount: number
+}
+
+export interface ImportRun {
+  id: number
+  started_at: string
+  finished_at: string | null
+  companies: number | null
+  startups_added: number | null
+  boards: number | null
+  roles_added: number | null
+  roles_updated: number | null
+  roles_closed: number | null
+  errors: string[]
 }
 
 export interface MatchSummary {
@@ -162,5 +192,5 @@ export interface Report {
 export interface AdminQueue {
   startups: AdminStartup[]
   reports: Report[]
-  stats: { devs: number; founders: number; openRoles: number; matches: number }
+  stats: { devs: number; founders: number; openRoles: number; matches: number; listed: number; importedRoles: number }
 }

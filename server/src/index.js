@@ -13,6 +13,13 @@ setInterval(() => {
   db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
 }, 3_600_000).unref();
 
+// Pull roles from startups' job boards: shortly after boot, then twice a day.
+if (process.env.IMPORT_JOBS !== 'off') {
+  const runImport = () => app.locals.importer.start().catch((e) => console.error('[import] failed', e));
+  setTimeout(runImport, 60_000).unref();
+  setInterval(runImport, 12 * 3_600_000).unref();
+}
+
 app.listen(PORT, HOST, () => {
   console.log(`HireMe running at ${process.env.PUBLIC_URL || `http://localhost:${PORT}`}`);
   if (!app.locals.mailer.configured)

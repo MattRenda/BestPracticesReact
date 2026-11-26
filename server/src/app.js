@@ -6,6 +6,7 @@ import { openDb, MAX_HEADCOUNT } from './db.js';
 import { createAuth } from './auth.js';
 import { createMailer } from './mail.js';
 import { checkStartup, emailDomain, emailMatchesDomain, looksLikeAgency, siteDomain } from './rules.js';
+import { createImporter } from './importer.js';
 
 const WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
@@ -52,6 +53,7 @@ export function createApp(
     production = process.env.NODE_ENV === 'production',
     log = console,
     ipLimit = 12, // sign-in emails per IP per 15 minutes
+    fetchImpl = fetch, // used by the job importer
   } = {},
 ) {
   const app = express();
@@ -59,6 +61,8 @@ export function createApp(
   app.disable('x-powered-by');
   app.locals.db = db;
   app.locals.mailer = mailer;
+  const importer = createImporter(db, { fetchImpl, log });
+  app.locals.importer = importer;
 
   const auth = createAuth(db, { mailer, publicUrl, adminEmails, production, log, ipLimit });
   const { requireUser, requireRole, requireAdmin } = auth;
@@ -141,8 +145,9 @@ export function createApp(
       const s = membership(u.id);
       out.startup = s ? { ...publicStartup(s), status: s.status, review_note: s.review_note } : null;
       if (!s) {
-        const sameDomain = db.prepare('SELECT id, name, status FROM startups WHERE domain = ? OR ? LIKE \'%.\' || domain').get(emailDomain(u.email), emailDomain(u.email));
-        out.joinable = sameDomain || null;
+        const d = emailDomain(u.email);
+        const sameDomain = db.prepare("SELECT id, name, status, source FROM startups WHERE (domain = ? OR ? LIKE '%.' || domain) AND status NOT IN ('rejected', 'retired')").get(d, d);
+        out.joinable = sameDomain ? { ...sameDomain, claimable: sameDomain.status === 'listed' } : null;
       } else {
         out.counts.interested = db
           .prepare(
@@ -217,8 +222,13 @@ export function createApp(
     const b = req.body || {};
     const { errors, flags, domain, headcount } = checkStartup(b, req.user.email);
     if (errors.length) return res.status(400).json({ error: errors[0], errors });
-    const existing = db.prepare('SELECT id, name FROM startups WHERE domain = ?').get(domain);
-    if (existing) return res.status(409).json({ error: `${existing.name} is already on HireMe. Join it instead.`, existing });
+    const existing = db.prepare('SELECT id, name, status FROM startups WHERE domain = ?').get(domain);
+    if (existing?.status === 'retired') return res.status(400).json({ error: `Our records show ${existing.name} has more than ${MAX_HEADCOUNT} people. Reply to your sign-in email if that’s wrong.` });
+    if (existing)
+      return res.status(409).json({
+        error: existing.status === 'listed' ? `We already list ${existing.name} from YC’s directory. Claim it below.` : `${existing.name} is already on HireMe. Join it instead.`,
+        existing: { ...existing, claimable: existing.status === 'listed' },
+      });
 
     const id = Number(
       db
@@ -240,9 +250,17 @@ export function createApp(
     const s = db.prepare('SELECT * FROM startups WHERE id = ?').get(int(req.body?.id));
     if (!s || !emailMatchesDomain(req.user.email, s.domain))
       return res.status(403).json({ error: 'You can only join a startup whose domain matches your email' });
-    if (s.status === 'rejected') return res.status(403).json({ error: 'That startup isn’t eligible for HireMe' });
+    if (s.status === 'rejected' || s.status === 'retired') return res.status(403).json({ error: 'That startup isn’t eligible for HireMe' });
     db.prepare('INSERT INTO startup_members (startup_id, user_id, title) VALUES (?, ?, ?)').run(s.id, req.user.id, str(req.body?.title, 60));
-    res.status(201).json(s);
+    if (s.status === 'listed') {
+      // Claiming an imported startup: the company email proves they work there, and YC's directory already
+      // confirms it's a startup under the size limit, so it goes live right away. Admins are told.
+      db.prepare("UPDATE startups SET status = 'approved', created_by = ?, reviewed_at = datetime('now'), review_note = 'Claimed by founder' WHERE id = ?").run(req.user.id, s.id);
+      const waiting = db.prepare("SELECT COUNT(*) n FROM dev_swipes d JOIN roles r ON r.id = d.role_id WHERE r.startup_id = ? AND d.liked = 1").get(s.id).n;
+      for (const to of adminEmails.filter(Boolean))
+        notify(to.trim(), `${s.name} claimed on HireMe`, `${req.user.email} claimed ${s.name} (${s.domain}, ${s.headcount} people per YC). ${waiting} developer yes${waiting === 1 ? '' : 'es'} were waiting.\n\n${link(req, 'admin')}`);
+    }
+    res.status(201).json(db.prepare('SELECT * FROM startups WHERE id = ?').get(s.id));
   });
 
   app.get('/api/startup', requireRole('founder'), (req, res) => {
@@ -331,20 +349,22 @@ export function createApp(
     const rows = db
       .prepare(
         `SELECT r.*, s.name AS s_name, s.website AS s_website, s.domain AS s_domain, s.headcount AS s_headcount, s.stage AS s_stage,
-                s.one_liner AS s_one_liner, s.about AS s_about, s.location AS s_location,
+                s.one_liner AS s_one_liner, s.about AS s_about, s.location AS s_location, s.status AS s_status,
                 EXISTS (SELECT 1 FROM founder_swipes f WHERE f.role_id = r.id AND f.dev_id = @me AND f.liked = 1) AS interested
          FROM roles r JOIN startups s ON s.id = r.startup_id
-         WHERE r.status = 'open' AND s.status = 'approved'
+         WHERE r.status = 'open' AND s.status IN ('approved', 'listed')
            AND NOT EXISTS (SELECT 1 FROM dev_swipes d WHERE d.role_id = r.id AND d.dev_id = @me)
            AND NOT EXISTS (SELECT 1 FROM reports x WHERE x.reporter_id = @me AND x.target_type = 'startup' AND x.target_id = s.id)
-         ORDER BY r.created_at DESC LIMIT 400`,
+         ORDER BY COALESCE(r.posted_at, r.created_at) DESC LIMIT 2000`,
       )
       .all({ me: req.user.id });
     const scored = rows.map((r) => {
       const overlap = skillList(r.skills).filter((k) => mine.has(k));
       const modeFit = me.work_pref === 'any' || me.work_pref === r.work_mode ? 1 : 0;
       const underpays = me.salary_min && r.salary_max && r.salary_max < me.salary_min ? 1 : 0;
-      return { r, overlap, score: (r.interested ? 100 : 0) + overlap.length * 3 + modeFit * 2 - underpays * 6 };
+      // Startups whose founders are on HireMe come a little ahead of imported listings.
+      const onHireMe = r.s_status === 'approved' ? 4 : 0;
+      return { r, overlap, score: (r.interested ? 100 : 0) + overlap.length * 3 + modeFit * 2 - underpays * 6 + onHireMe };
     });
     scored.sort((a, b) => b.score - a.score);
     res.json(
@@ -361,14 +381,19 @@ export function createApp(
         created_at: r.created_at,
         interested: !!r.interested,
         sharedSkills: overlap,
-        startup: { id: r.startup_id, name: r.s_name, website: r.s_website, domain: r.s_domain, headcount: r.s_headcount, stage: r.s_stage, one_liner: r.s_one_liner, about: r.s_about, location: r.s_location },
+        // Imported listing whose founders haven't joined: a yes points to the company's own application page.
+        external: r.s_status === 'listed' ? { apply_url: r.apply_url } : null,
+        posted_at: r.posted_at,
+        startup: { id: r.startup_id, name: r.s_name, website: r.s_website, domain: r.s_domain, headcount: r.s_headcount, stage: r.s_stage, one_liner: r.s_one_liner, about: r.s_about, location: r.s_location, onHireMe: r.s_status === 'approved' },
       })),
     );
   });
 
   app.post('/api/deck/:roleId', requireRole('dev'), (req, res) => {
     const roleId = int(req.params.roleId);
-    const role = db.prepare("SELECT r.id FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.id = ? AND r.status = 'open' AND s.status = 'approved'").get(roleId);
+    const role = db
+      .prepare("SELECT r.id, r.apply_url, s.status AS s_status FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.id = ? AND r.status = 'open' AND s.status IN ('approved', 'listed')")
+      .get(roleId);
     if (!role) return res.status(404).json({ error: 'That role isn’t open anymore' });
     const liked = req.body?.liked ? 1 : 0;
     db.prepare(
@@ -376,7 +401,20 @@ export function createApp(
        ON CONFLICT (dev_id, role_id) DO UPDATE SET liked = excluded.liked, note = excluded.note, created_at = datetime('now')`,
     ).run(req.user.id, roleId, liked, liked ? str(req.body?.note, 500) : '');
     const matchId = liked ? maybeMatch(req, roleId, req.user.id) : null;
-    res.json({ matched: !!matchId, matchId });
+    res.json({ matched: !!matchId, matchId, external: liked && role.s_status === 'listed' ? { apply_url: role.apply_url } : null });
+  });
+
+  // Roles a developer said yes to at startups that aren't on HireMe yet — so they can apply on the company's site.
+  app.get('/api/saved', requireRole('dev'), (req, res) => {
+    res.json(
+      db
+        .prepare(
+          `SELECT r.id, r.title, r.apply_url, r.status, d.created_at AS liked_at, s.name AS startup_name, s.domain, s.headcount
+           FROM dev_swipes d JOIN roles r ON r.id = d.role_id JOIN startups s ON s.id = r.startup_id
+           WHERE d.dev_id = ? AND d.liked = 1 AND s.status = 'listed' ORDER BY d.created_at DESC LIMIT 200`,
+        )
+        .all(req.user.id),
+    );
   });
 
   app.delete('/api/deck/:roleId', requireRole('dev'), (req, res) => {
@@ -593,7 +631,7 @@ export function createApp(
     ).run(req.user.id, type, targetId, reason, str(req.body?.detail, 1000));
 
     let hidden = false;
-    if (type === 'startup' && exists.status === 'approved') {
+    if (type === 'startup' && ['approved', 'listed'].includes(exists.status)) {
       const n = db.prepare("SELECT COUNT(DISTINCT reporter_id) n FROM reports WHERE target_type = 'startup' AND target_id = ? AND resolved = 0 AND reason IN ('recruiter','too_big')").get(targetId).n;
       if (n >= HIDE_AFTER_REPORTS) {
         db.prepare("UPDATE startups SET status = 'pending', flags = trim(flags || '; Hidden after reports', '; ') WHERE id = ?").run(targetId);
@@ -612,7 +650,8 @@ export function createApp(
       .prepare(
         `SELECT s.*, (SELECT GROUP_CONCAT(u.email, ', ') FROM startup_members m JOIN users u ON u.id = m.user_id WHERE m.startup_id = s.id) AS members,
            (SELECT COUNT(*) FROM reports x WHERE x.target_type = 'startup' AND x.target_id = s.id AND x.resolved = 0) AS reports
-         FROM startups s ORDER BY s.status = 'pending' DESC, s.created_at DESC LIMIT 300`,
+         FROM startups s WHERE s.status NOT IN ('listed', 'retired') OR EXISTS (SELECT 1 FROM reports x WHERE x.target_type = 'startup' AND x.target_id = s.id AND x.resolved = 0)
+         ORDER BY s.status = 'pending' DESC, s.created_at DESC LIMIT 300`,
       )
       .all();
     const reports = db
@@ -626,7 +665,9 @@ export function createApp(
     const stats = {
       devs: db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'dev'").get().n,
       founders: db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'founder'").get().n,
-      openRoles: db.prepare("SELECT COUNT(*) n FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.status = 'open' AND s.status = 'approved'").get().n,
+      openRoles: db.prepare("SELECT COUNT(*) n FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.status = 'open' AND s.status IN ('approved', 'listed')").get().n,
+      listed: db.prepare("SELECT COUNT(*) n FROM startups WHERE status = 'listed'").get().n,
+      importedRoles: db.prepare("SELECT COUNT(*) n FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.status = 'open' AND s.status = 'listed'").get().n,
       matches: db.prepare('SELECT COUNT(*) n FROM matches').get().n,
     };
     res.json({ startups, reports, stats });
@@ -648,6 +689,17 @@ export function createApp(
       for (const to of memberEmails(s.id)) notify(to, status === 'approved' ? `${s.name} is live on HireMe` : `About ${s.name} on HireMe`, text);
     }
     res.json(db.prepare('SELECT * FROM startups WHERE id = ?').get(s.id));
+  });
+
+  app.get('/api/admin/import', requireAdmin, (_req, res) => {
+    const runs = db.prepare('SELECT * FROM import_runs ORDER BY id DESC LIMIT 5').all().map((r) => ({ ...r, errors: parse(r.errors, []) }));
+    res.json({ running: importer.running, runs });
+  });
+
+  app.post('/api/admin/import', requireAdmin, (_req, res) => {
+    const already = importer.running;
+    importer.start().catch((e) => log.error?.('import failed', e));
+    res.status(202).json({ running: true, already });
   });
 
   app.post('/api/admin/reports/:id/resolve', requireAdmin, (req, res) => {

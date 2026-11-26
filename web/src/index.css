@@ -452,3 +452,9 @@ a { color: var(--moss); }
 }
 .group .radios legend { font-family: var(--body); font-size: var(--t-sm); font-weight: 700; padding: 0; }
 .view-head .import { margin-top: 14px; }
+
+.ribbon.quiet { background: var(--paper); color: var(--muted); font-weight: 400; border-bottom: 1px solid var(--rule); }
+.saved { margin-top: 26px; }
+.saved h2 { font-size: var(--t-lg); padding: 0 16px; margin-bottom: 2px; }
+.saved > p { padding: 0 16px; margin: 0 0 8px; }
+@media (max-width: 720px) { .saved h2, .saved > p { padding: 0; } }

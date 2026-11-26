@@ -16,6 +16,18 @@ Startups with 50 or fewer people meet developers directly. No recruiters, no big
 
 Teammates join an existing startup by signing in with an email on the same domain.
 
+## Imported jobs
+
+So developers have roles to swipe on from day one, the server imports engineering roles from startups with 50 or fewer people (`server/src/importer.js`), shortly after it starts and then twice a day:
+
+1. **Companies** come from the open [YC company dataset](https://github.com/yc-oss/api) (YC companies that are hiring, with team sizes). Only basic facts are used: name, website, size, one-liner. Anything over 50 people, inactive, or that looks like a staffing agency is skipped.
+2. **Job boards** are found from links on the company's website (homepage, `/careers`, `/jobs`, respecting robots.txt). If there's no link, the company's name is tried on Ashby, Greenhouse and Lever, and a guessed board only counts if its posts mention the company.
+3. **Roles** come from those boards' public APIs. Only engineering titles are kept; skills are picked out of the description. Roles that come down from the board are closed, and startups that grow past 50 are retired.
+
+ycombinator.com itself is never scraped; its terms of use don't allow it.
+
+Imported startups are **listed**, not verified members. When a developer says yes to one of their roles, HireMe points them to the company's own application page and keeps the yes. A founder who signs in with a work email on that startup's domain can **claim** it: it goes live right away (the email proves they work there, and the size comes from YC's directory), they see every developer who already said yes, and their job board keeps syncing. Admins get an email for each claim and can run or watch imports from the Admin tab. Set `IMPORT_JOBS=off` to disable the schedule.
+
 ## Privacy
 
 - Emails are never shown to the other side. People talk in the in-app chat and can share contact details when they choose.
