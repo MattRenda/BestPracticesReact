@@ -1,69 +1,87 @@
-# Sprout
+# HireMe
 
-Swipe right on a job and Sprout applies for you. Swipe left to skip.
+Startups with 50 or fewer people meet developers directly. No recruiters, no big companies.
 
-It's a self-hosted take on the swipe-to-apply idea: one web app you can install on your phone, plus an agent that fills and submits applications in a headless browser on your own machine.
+- **Developers** swipe on open roles at verified startups.
+- **Founders** swipe on developers, one role at a time. Developers who already said yes to that role show up first.
+- **When both say yes**, it's a match and a chat opens. Nobody gets cold applications or cold messages.
 
-## How it works
+## How the startup-only rule is enforced
 
-1. **Pick companies.** Paste their careers board links in Settings. Sprout pulls open roles from their Greenhouse, Lever and Ashby boards (their public job APIs) every few hours. It keeps the ones that match your title keywords, exclusions and locations.
-2. **Swipe.** Each job is a card. Drag right or press → to apply. Drag left or press ← to skip. Press Z to undo.
-3. **Answer a couple of questions (optional).** After a right swipe, Sprout may ask about gaps between your resume and the job. Your answers feed into that application. Skipping is fine, and unanswered questions never block applying for more than 30 minutes.
-4. **Sprout applies.** The agent prepares a cover letter and, with an Anthropic API key, a resume tailored to the job (as a PDF). It opens the application, fills every field it can from your profile, saved answers and resume, attaches the files, submits, and waits for the confirmation.
-5. **Anything it can't do honestly goes to Review.** That covers CAPTCHAs, required questions it can't answer truthfully, and validation errors. You get the reason, a screenshot of where it stopped, and a link to finish it yourself.
+1. **Work email.** Founders sign in with a one-time link sent to their email, which proves they own that inbox. The startup's website domain has to match the email domain. Personal addresses (Gmail, Outlook, iCloud and so on) can't create a startup.
+2. **50 people or fewer.** Headcount is required at signup and can't be edited above 50 later.
+3. **Not an agency.** Founders confirm they're hiring for their own startup. Signups that mention recruiting, staffing or outsourcing, or that are close to the size limit, are flagged for you.
+4. **You approve every startup.** New startups stay hidden (roles aren't shown, and they can't browse developers) until an admin approves them in the **Admin** tab.
+5. **Reports.** Anyone can report a startup as a recruiter or as too big. A startup reported for those reasons by three different people is hidden again until you review it. Reporters stop seeing who they reported right away.
 
-**Practice mode is on by default.** Sprout fills each form but stops before Submit, so you can check its work in Review. Turn it off in Settings when you trust it.
+Teammates join an existing startup by signing in with an email on the same domain.
 
-Other settings: approve each application before it's sent, a daily cap (default 30), and how often to check for new jobs.
+## Privacy
 
-## Run it
+- Emails are never shown to the other side. People talk in the in-app chat and can share contact details when they choose.
+- Founders only see developers once their startup is approved. Developers can hide their profile at any time.
+- Anyone can delete their account, which removes their profile, swipes, matches and messages.
+
+## Run it locally
 
 Requires Node 22.13+.
 
 ```bash
-npm run setup          # installs everything, including the browser the agent uses
-cp .env.example .env   # optional: add ANTHROPIC_API_KEY for tailored writing
-npm start              # builds the app and serves it at http://localhost:4317
+npm run setup
+npm run demo     # fictional startups and developers, at http://localhost:4317
 ```
 
-Then fill in your **Profile** first: contact info, screening answers, your resume file and resume text. Next, add companies in **Settings**, and go swipe.
+In the demo, sign in as the founder `ana@tinyrocket.example`, as `admin@hireme.example` for the Admin tab, or with any other email as a developer. Without email configured, the sign-in link appears on screen.
 
-For development, `npm run dev` runs the API with reload and Vite on :5173.
+To run with your own data instead:
 
-### From your phone
-
-Set these in `.env`, restart, and open `http://<your-computer's-LAN-IP>:4317` on your phone:
-
-```
-HOST=0.0.0.0
-SPROUT_TOKEN=some-long-access-code
+```bash
+cp .env.example .env   # set ADMIN_EMAILS to your email
+npm start
 ```
 
-Use your browser's "Add to Home Screen" to install it like an app. The server refuses to listen on the network without `SPROUT_TOKEN`, because it holds your personal data. Keep it on your home network, or put it behind something like Tailscale rather than exposing it to the internet.
+`npm run dev` runs the API with reload and Vite on :5173. `npm test` runs the API tests and lint.
 
-The agent needs the computer (or a Raspberry Pi) running Sprout to stay on. That's where applications happen.
+## Put it online
 
-## What gets submitted
+It's one Node server with a SQLite file, so it needs a host with a persistent disk.
 
-- **Profile fields:** name, email, phone, links, location, current role, years of experience, work authorization, sponsorship, relocation, salary expectation, start date. These come from your profile exactly as you set them.
-- **Voluntary EEO questions:** "decline to self-identify" unless you set otherwise.
-- **Required consent checkboxes** ("I acknowledge the privacy policy"): ticked on your behalf. Using auto-apply means you agree to them.
-- **Open questions:** your saved answer if one matches. Otherwise Claude drafts an answer from your resume and your answers for that job. If it can't answer truthfully, the job goes to Review instead of getting a made-up answer.
-- **Resume:** the tailored PDF if one was made, otherwise your uploaded file.
+**Fly.io** (config included):
 
-Sprout never tries to get around CAPTCHAs or bot checks. Some employers' boards discourage automated applications. Review those sites' terms if that matters to you.
+```bash
+fly launch --no-deploy          # keep the existing fly.toml; pick an app name
+fly volumes create hireme_data --size 1
+fly secrets set PUBLIC_URL=https://<app>.fly.dev ADMIN_EMAILS=you@example.com \
+  SMTP_URL='smtps://resend:<API_KEY>@smtp.resend.com:465' MAIL_FROM='HireMe <hello@yourdomain.com>'
+fly deploy
+```
+
+Any host that runs a Dockerfile with a volume mounted at `/data` works the same way (Railway, Render, a VPS, or a Raspberry Pi behind Cloudflare Tunnel).
+
+**Email is required in production.** Sign-in links can't be delivered without `SMTP_URL`; the server refuses sign-ins rather than failing silently. Any SMTP provider works. Resend and Postmark both have free tiers and need you to verify a sending domain.
+
+| Variable | What it does |
+| --- | --- |
+| `PUBLIC_URL` | Public address, used in emails and to mark cookies `Secure` |
+| `ADMIN_EMAILS` | Comma-separated emails that get the Admin tab and new-startup emails |
+| `SMTP_URL`, `MAIL_FROM` | Outgoing email for sign-in links, matches and message nudges |
+| `DB_PATH` | SQLite file (default `server/data/hireme.db`; `/data/hireme.db` in Docker) |
+
+Back up the SQLite file regularly (for example `fly ssh console -C "sqlite3 /data/hireme.db .dump"` or a volume snapshot).
 
 ## Project layout
 
 ```
-web/      React + Vite installable web app (swipe deck, review, applications, profile, settings)
-server/   Express + SQLite API, job feed, and the apply agent
-  src/feed.js           Greenhouse / Lever / Ashby board fetching and filters
-  src/ai.js             Claude prompts (questions, cover letter, tailored resume, answers) + offline templates
-  src/services.js       swipe → questions → review → apply-queue state
-  src/agent/agent.js    headless browser worker: fill, upload, submit, verify
-  src/agent/filler.js   in-page form reader/filler
-  test/                 API tests and end-to-end agent tests against local forms
+web/      React + Vite installable web app
+  src/views/        Landing, Discover (both decks), Matches + chat, Profile, Startup, Admin
+  src/components/   Swipe deck, sheets, report button
+server/   Express + SQLite API
+  src/auth.js       Magic-link sign-in, sessions, rate limits, cross-site request guard
+  src/rules.js      Work-email, headcount and agency checks
+  src/app.js        Profiles, startups, roles, swipes, matches, chat, reports, admin
+  src/mail.js       SMTP (or log to console when not configured)
+  scripts/demo.js   Fictional demo data
+  test/             API tests
 ```
 
-`npm test` runs the API tests, end-to-end agent tests in a real browser (skipped if none is installed), and lint.
+The earlier single-user auto-apply version (the Sprout clone) is on the `sprout` branch.

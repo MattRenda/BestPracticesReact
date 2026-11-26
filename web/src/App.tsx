@@ -1,136 +1,133 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { api, AuthError, setToken } from './api'
-import type { AgentStatus, Stats } from './types'
-import { SwipeView } from './views/SwipeView'
-import { ReviewView } from './views/ReviewView'
-import { Pipeline } from './views/Pipeline'
-import { ProfileView } from './views/ProfileView'
-import { AnswersView } from './views/AnswersView'
-import { SettingsView } from './views/SettingsView'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { api } from './api'
+import type { Me } from './types'
+import { Landing, SignIn } from './views/Landing'
+import { ChooseRole } from './views/ChooseRole'
+import { DevDiscover, FounderDiscover } from './views/Discover'
+import { Matches } from './views/Matches'
+import { DevProfileView } from './views/DevProfile'
+import { StartupView } from './views/StartupView'
+import { AdminView } from './views/Admin'
 
-type View = 'swipe' | 'review' | 'applications' | 'profile' | 'answers' | 'settings'
-const VIEWS: View[] = ['swipe', 'review', 'applications', 'profile', 'answers', 'settings']
+/** Hash routes: #/discover, #/matches, #/matches/12, #/profile, #/startup, #/admin, #/signin/<token> */
+function readRoute() {
+  const [page = '', arg = ''] = location.hash.replace(/^#\/?/, '').split('/')
+  return { page, arg }
+}
 
-const NAV: { id: View; label: string; icon: ReactNode }[] = [
-  { id: 'swipe', label: 'Swipe', icon: <path d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="2" /> },
-  { id: 'review', label: 'Review', icon: <path d="M4 12l5 5L20 6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /> },
-  { id: 'applications', label: 'Applied', icon: <path d="M4 20h16M7 20v-6M12 20V8M17 20v-9" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /> },
-  { id: 'profile', label: 'Profile', icon: <><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M4 21c1-4 4-6 8-6s7 2 8 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></> },
-  { id: 'settings', label: 'Settings', icon: <><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></> },
-]
-
-function readView(): View {
-  const h = location.hash.slice(1) as View
-  return VIEWS.includes(h) ? h : 'swipe'
+const ICONS: Record<string, ReactNode> = {
+  discover: <path d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="2" />,
+  matches: <path d="M4 5h16v11H9l-5 4V5Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />,
+  profile: (
+    <>
+      <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M4 21c1-4 4-6 8-6s7 2 8 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </>
+  ),
+  startup: <path d="M4 20V9l8-5 8 5v11h-5v-6H9v6H4Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />,
+  admin: <path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6l8-3Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />,
 }
 
 export default function App() {
-  const [view, setView] = useState<View>(readView)
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [agent, setAgent] = useState<AgentStatus | null>(null)
-  const [needAuth, setNeedAuth] = useState(false)
+  const [me, setMe] = useState<Me | null>(null)
+  const [route, setRoute] = useState(readRoute)
   const [offline, setOffline] = useState(false)
 
-  const refresh = useCallback(() => {
-    api.stats().then(
-      (s) => {
-        setStats(s)
-        setOffline(false)
-        setNeedAuth(false)
-      },
-      (e) => (e instanceof AuthError ? setNeedAuth(true) : setOffline(true)),
-    )
-    api.agent().then(setAgent, () => {})
-  }, [])
+  const refresh = useCallback(
+    () =>
+      api.me().then(
+        (m) => {
+          setMe(m)
+          setOffline(false)
+        },
+        () => setOffline(true),
+      ),
+    [],
+  )
 
   useEffect(() => {
     refresh()
-    const poll = setInterval(() => document.visibilityState === 'visible' && refresh(), 8000)
-    const onHash = () => setView(readView())
+    const onHash = () => {
+      setRoute(readRoute())
+      refresh()
+    }
     window.addEventListener('hashchange', onHash)
+    const poll = setInterval(() => document.visibilityState === 'visible' && refresh(), 15_000)
     return () => {
-      clearInterval(poll)
       window.removeEventListener('hashchange', onHash)
+      clearInterval(poll)
     }
   }, [refresh])
 
-  if (needAuth) return <AccessCode onDone={refresh} />
+  if (route.page === 'signin' && route.arg) return <SignIn token={route.arg} onDone={refresh} />
+  if (!me) return offline ? <p className="pad">Can’t reach HireMe right now. Check your connection and reload.</p> : null
+  if (!me.user) return <Landing />
+  if (!me.user.role) return <ChooseRole onDone={refresh} />
 
-  const badge = (id: View) => (id === 'review' && stats ? stats.needsYou + stats.review : 0)
+  const { user, counts } = me
+  const isDev = user.role === 'dev'
+  const homeTab = isDev ? 'profile' : 'startup'
+  const tabs = ['discover', 'matches', homeTab, ...(user.isAdmin ? ['admin'] : [])]
+  const labels: Record<string, string> = { discover: 'Discover', matches: 'Matches', profile: 'Profile', startup: 'Startup', admin: 'Admin' }
+  const badges: Record<string, number> = {
+    discover: counts?.interested ?? 0,
+    matches: counts?.unread ?? 0,
+    admin: (counts?.pendingStartups ?? 0) + (counts?.openReports ?? 0),
+  }
+
+  // Onboarding: devs need a profile, founders need a startup, before anything else is useful.
+  let page = tabs.includes(route.page) ? route.page : 'discover'
+  if (isDev && !me.profileComplete && page === 'discover') page = 'profile'
+  if (!isDev && !me.startup && page !== 'admin') page = 'startup'
+  const onboarding = (isDev && !me.profileComplete) || (!isDev && !me.startup)
 
   return (
     <div className="shell">
       <aside className="rail">
-        <a className="brand" href="#swipe">
-          <img src="/sprout.svg" alt="" width={28} height={28} />
-          <span>Sprout</span>
+        <a className="brand" href="#/discover">
+          <img src="/hireme.svg" alt="" width={30} height={30} />
+          <span>HireMe</span>
         </a>
         <nav aria-label="Main">
-          {NAV.map((n) => (
-            <a key={n.id} href={`#${n.id}`} aria-current={view === n.id || (n.id === 'profile' && view === 'answers') ? 'page' : undefined}>
+          {tabs.map((t) => (
+            <a key={t} href={`#/${t}`} aria-current={page === t ? 'page' : undefined}>
               <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-                {n.icon}
+                {ICONS[t]}
               </svg>
-              <span>{n.label}</span>
-              {badge(n.id) > 0 && <span className="badge">{badge(n.id)}</span>}
+              <span>{labels[t]}</span>
+              {badges[t] > 0 && <span className="badge">{badges[t]}</span>}
             </a>
           ))}
         </nav>
-        {stats && (
-          <p className="rail-stat">
-            <strong>{stats.appliedThisWeek}</strong> applied in the last 7 days
-            <span className="rail-ai">{stats.ai ? 'Claude is writing your materials' : 'Templates only — add ANTHROPIC_API_KEY on the server for tailored writing'}</span>
+        <div className="rail-foot">
+          <p className="rail-who">
+            {isDev ? 'Developer' : me.startup?.name || 'Founder'}
+            <span>{user.email}</span>
           </p>
-        )}
+          <button
+            className="link-btn"
+            onClick={async () => {
+              await api.logout()
+              location.hash = ''
+              refresh()
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </aside>
       <main className="main">
         {offline && (
           <div className="banner" role="alert">
-            Can’t reach the Sprout server. Start it with <code>npm start</code>, then reload.
+            Can’t reach HireMe right now. We’ll keep trying.
           </div>
         )}
-        {view === 'swipe' && <SwipeView stats={stats} agent={agent} onChange={refresh} />}
-        {view === 'review' && <ReviewView onChange={refresh} />}
-        {view === 'applications' && <Pipeline onChange={refresh} />}
-        {view === 'profile' && <ProfileView />}
-        {view === 'answers' && <AnswersView />}
-        {view === 'settings' && <SettingsView onChange={refresh} />}
+        {page === 'discover' && (isDev ? <DevDiscover onChange={refresh} /> : <FounderDiscover me={me} onChange={refresh} />)}
+        {page === 'matches' && <Matches me={me} openId={Number(route.arg) || null} onChange={refresh} />}
+        {page === 'profile' && <DevProfileView onboarding={onboarding} onSaved={refresh} />}
+        {page === 'startup' && <StartupView me={me} onChange={refresh} />}
+        {page === 'admin' && user.isAdmin && <AdminView onChange={refresh} />}
       </main>
     </div>
-  )
-}
-
-function AccessCode({ onDone }: { onDone: () => void }) {
-  const [code, setCode] = useState('')
-  const [error, setError] = useState('')
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    setToken(code.trim())
-    try {
-      await api.stats()
-      onDone()
-    } catch (err) {
-      setError(err instanceof AuthError ? 'That code doesn’t match SPROUT_TOKEN on the server.' : (err as Error).message)
-    }
-  }
-  return (
-    <main className="gate">
-      <form onSubmit={submit}>
-        <img src="/sprout.svg" alt="" width={48} height={48} />
-        <h1>Sprout</h1>
-        <label className="field">
-          <span>Access code</span>
-          <input type="password" autoFocus value={code} onChange={(e) => setCode(e.target.value)} autoComplete="current-password" />
-        </label>
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
-        <button className="btn primary" type="submit" disabled={!code.trim()}>
-          Unlock
-        </button>
-      </form>
-    </main>
   )
 }

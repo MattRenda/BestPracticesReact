@@ -1,14 +1,15 @@
 {
-  "name": "sprout",
+  "name": "hireme",
   "private": true,
-  "version": "0.1.0",
-  "description": "Swipe right on jobs; an agent applies for you.",
+  "version": "0.2.0",
+  "description": "Startups with 50 or fewer people meet developers. No recruiters.",
   "type": "module",
   "scripts": {
-    "setup": "npm --prefix server install && npm --prefix web install && npm --prefix server exec -- playwright install chromium",
+    "setup": "npm --prefix server install && npm --prefix web install",
     "dev": "node scripts/dev.mjs",
     "build": "npm --prefix web run build",
     "start": "npm run build && npm --prefix server start",
+    "demo": "npm run build && cd server && rm -f data/demo.db* && npm run demo && DB_PATH=./data/demo.db ADMIN_EMAILS=admin@hireme.example node --disable-warning=ExperimentalWarning src/index.js",
     "test": "npm --prefix server test && npm --prefix web run lint"
   },
   "engines": {

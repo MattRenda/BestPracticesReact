@@ -1,9 +1,9 @@
-// Minimal service worker: makes Sprout installable and opens instantly offline-ish.
+// Minimal service worker: makes HireMe installable and opens instantly offline-ish.
 // The app shell is cached; API calls always go to the network.
-const CACHE = 'sprout-v1';
+const CACHE = 'hireme-v1';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/sprout.svg', '/manifest.webmanifest'])));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/hireme.svg', '/manifest.webmanifest'])));
   self.skipWaiting();
 });
 
