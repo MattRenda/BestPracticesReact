@@ -49,6 +49,9 @@ export function Landing() {
               <strong>No cold applications.</strong> Chat opens only when both sides are interested.
             </li>
           </ul>
+          <p className="legal-links">
+            <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+          </p>
         </div>
 
         <form className="signin-card" onSubmit={submit}>

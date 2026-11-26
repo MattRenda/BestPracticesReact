@@ -8,6 +8,7 @@ import { Matches } from './views/Matches'
 import { DevProfileView } from './views/DevProfile'
 import { StartupView } from './views/StartupView'
 import { AdminView } from './views/Admin'
+import { Privacy, Terms } from './views/Legal'
 
 /** Hash routes: #/discover, #/matches, #/matches/12, #/profile, #/startup, #/admin, #/signin/<token> */
 function readRoute() {
@@ -59,6 +60,9 @@ export default function App() {
     }
   }, [refresh])
 
+  // Public pages at real paths (Google's sign-in screen links to these)
+  if (location.pathname === '/privacy') return <Privacy />
+  if (location.pathname === '/terms') return <Terms />
   if (route.page === 'signin' && route.arg) return <SignIn token={route.arg} onDone={refresh} />
   if (!me) return offline ? <p className="pad">Can’t reach HireMe right now. Check your connection and reload.</p> : null
   if (!me.user) return <Landing />
