@@ -192,9 +192,12 @@ a.btn { display: inline-block; text-decoration: none; text-align: center; }
 .card-company { font-size: var(--t-3xl); font-weight: 800; letter-spacing: -0.03em; line-height: 1; overflow-wrap: anywhere; }
 .card-title { font-family: var(--display); font-size: var(--t-xl); font-weight: 500; margin: 8px 0 6px; line-height: 1.2; }
 .card-meta { font-size: var(--t-sm); color: var(--soil); margin: 0 0 14px; white-space: pre-wrap; }
-/* The body scrolls (wheel on desktop; Deck.tsx scrolls it by hand on touch). touch-action: none keeps it from
-   being its own touch root, which let the browser take drags that started here. */
-.card-body { flex: 1; overflow-y: auto; touch-action: none; overscroll-behavior: contain; border-top: 1px solid var(--rule); padding-top: 12px; font-size: 0.95rem; color: var(--ink); mask-image: linear-gradient(to bottom, #000 85%, transparent); }
+/* Nothing scrolls on the card (a swipe works from anywhere); the full description opens in a sheet. */
+.card-body { flex: 1; min-height: 0; overflow: hidden; border-top: 1px solid var(--rule); padding-top: 12px; font-size: 0.95rem; color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; }
+.card-body .chips { overflow: hidden; max-height: 7.5em; }
+.details-btn { margin-top: auto; }
+.details-sheet { padding: 22px 22px calc(18px + env(safe-area-inset-bottom)); overflow-y: auto; max-height: 90vh; }
+.details-sheet p { white-space: pre-line; }
 .card-body p { margin: 0 0 10px; white-space: pre-line; max-width: 70ch; }
 .card-link { font-size: var(--t-sm); font-weight: 700; color: var(--moss); margin-top: 10px; align-self: flex-start; }
 .stamp {

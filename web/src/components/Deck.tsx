@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react'
 
 const THRESHOLD = 110
-/** Movement (px) before a drag commits to sideways (swipe) or up/down (scroll the description). */
+/** Movement (px) before a drag commits to sideways (swipe) or up/down (ignored). */
 const LOCK = 8
 
 type Props<T extends { id: number }> = {
@@ -23,9 +23,9 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
   const [history, setHistory] = useState<T[]>([])
   const [drag, setDrag] = useState({ x: 0, active: false })
   const [fling, setFling] = useState<'left' | 'right' | null>(null)
-  // The card owns every touch (touch-action: none) so a swipe works the same from any part of it.
-  // Up/down drags scroll the description by hand instead; the card itself only ever moves sideways.
-  const start = useRef({ x: 0, y: 0, t: 0, axis: '' as '' | 'x' | 'y', body: null as HTMLElement | null, scrollTop: 0 })
+  // The card owns every touch (touch-action: none) so a swipe works the same from any part of it,
+  // and it only ever moves sideways. Up/down drags do nothing.
+  const start = useRef({ x: 0, y: 0, t: 0, axis: '' as '' | 'x' | 'y' })
 
   const visible = items?.filter((i) => !gone.has(i.id)) ?? null
   const top = visible?.[0]
@@ -100,10 +100,10 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
   }, [disabled])
 
   function onDown(e: RPointerEvent) {
-    if (fling || disabled || (e.target as HTMLElement).closest('a, button')) return
+    // Taps on links and buttons, and anything in a sheet opened from the card, aren't drags.
+    if (fling || disabled || (e.target as HTMLElement).closest('a, button, dialog')) return
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    const body = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.card-body')
-    start.current = { x: e.clientX, y: e.clientY, t: performance.now(), axis: '', body, scrollTop: body?.scrollTop ?? 0 }
+    start.current = { x: e.clientX, y: e.clientY, t: performance.now(), axis: '' }
     setDrag({ x: 0, active: true })
   }
   function onMove(e: RPointerEvent) {
@@ -117,7 +117,6 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
       s.t = performance.now()
     }
     if (s.axis === 'x') setDrag({ x: dx, active: true })
-    else if (s.body) s.body.scrollTop = s.scrollTop - dy
   }
   function onUp() {
     if (!drag.active) return

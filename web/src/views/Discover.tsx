@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { api, ApiError, salaryRange, WORK_LABEL } from '../api'
 import type { Me, RoleCard } from '../types'
 import { Deck } from '../components/Deck'
-import { Chips, ReportButton, Toast } from '../components/ui'
+import { Chips, ReportButton, Sheet, Toast } from '../components/ui'
 import { ago, useToast } from '../lib'
 
 function paragraphs(text: string, max = 2400) {
@@ -135,6 +135,7 @@ export function Discover({ me, onChange }: { me: Me; onChange: () => void }) {
 function RoleCardView({ c, onReported }: { c: RoleCard; onReported: () => void }) {
   const s = c.startup
   const pay = salaryRange(c.salary_min, c.salary_max)
+  const [details, setDetails] = useState(false)
   return (
     <>
       <header className="card-head">
@@ -147,17 +148,36 @@ function RoleCardView({ c, onReported }: { c: RoleCard; onReported: () => void }
         <p className="card-title">{c.title}</p>
         <p className="card-meta">{[WORK_LABEL[c.work_mode], c.location, pay, c.equity && `${c.equity} equity`].filter(Boolean).join('  ·  ')}</p>
       </header>
+      {/* No scrolling text on the card, so a swipe works from anywhere; the full description is a tap away. */}
       <div className="card-body">
         {s.one_liner && <p className="one-liner">{s.one_liner}</p>}
         <Chips list={c.skills} highlight={c.sharedSkills} />
-        {c.description ? paragraphs(c.description) : <p className="muted">No description yet.</p>}
-        {s.about && (
-          <>
-            <h3 className="card-sub">About {s.name}</h3>
-            {paragraphs(s.about, 1200)}
-          </>
-        )}
+        <button className="btn ghost small details-btn" onClick={() => setDetails(true)}>
+          Show details
+        </button>
       </div>
+      <Sheet open={details} onClose={() => setDetails(false)} label={`${c.title} at ${s.name}`}>
+        {details && (
+          <div className="details-sheet">
+            <h2>{c.title}</h2>
+            <p className="muted small">
+              {s.name} · {[WORK_LABEL[c.work_mode], c.location, pay, c.equity && `${c.equity} equity`].filter(Boolean).join(' · ')}
+            </p>
+            {c.description ? paragraphs(c.description) : <p className="muted">No description yet.</p>}
+            {s.about && (
+              <>
+                <h3 className="card-sub">About {s.name}</h3>
+                {paragraphs(s.about, 1200)}
+              </>
+            )}
+            <div className="sheet-actions">
+              <button className="btn primary" onClick={() => setDetails(false)}>
+                Back to swiping
+              </button>
+            </div>
+          </div>
+        )}
+      </Sheet>
       <footer className="card-foot">
         <span className="card-links">
           <a className="card-link" href={s.website} target="_blank" rel="noreferrer noopener">
