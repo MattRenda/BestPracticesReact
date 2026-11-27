@@ -182,6 +182,7 @@ export function openDb(file = DB_PATH) {
     ['apply_url', 'TEXT'],
     ['posted_at', 'TEXT'],
     ['apply_email', 'TEXT'], // the startup takes applications by email (Hacker News "Who is hiring?" posts)
+    ['lang', 'TEXT'], // language of the posting or its form ('en', 'ja'…; '' = couldn't tell; NULL = not checked yet)
   ]);
   // Small key/value settings an admin can change (e.g. which form systems HireMe applies through).
   db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
@@ -244,6 +245,19 @@ export function openDb(file = DB_PATH) {
     db.exec(`UPDATE applications SET state = 'failed', error = 'Didn’t go through: the site has a bot check or didn’t confirm it. You can apply on their site'
              WHERE state = 'needs_you' AND (error LIKE '%CAPTCHA%' OR error LIKE '%didn’t confirm%' OR error LIKE '%Submit button%' OR error LIKE '%didn’t accept%')`);
     db.exec('PRAGMA user_version = 2');
+  }
+  // One-time: applications stuck on questions in another language (the posting wasn't in English) disappear.
+  if (db.prepare('PRAGMA user_version').get().user_version < 3) {
+    const rows = db.prepare("SELECT id, role_id, missing FROM applications WHERE state IN ('needs_you', 'failed')").all();
+    for (const a of rows) {
+      const m = a.missing || '';
+      const lang = /[\u3040-\u30ff]/.test(m) ? 'ja' : /[\uac00-\ud7af]/.test(m) ? 'ko' : /[\u4e00-\u9fff]/.test(m) ? 'zh' : /[\u0400-\u04ff]/.test(m) ? 'ru' : '';
+      if (lang) {
+        db.prepare("UPDATE applications SET state = 'canceled' WHERE id = ?").run(a.id);
+        db.prepare('UPDATE roles SET lang = ? WHERE id = ?').run(lang, a.role_id);
+      }
+    }
+    db.exec('PRAGMA user_version = 3');
   }
 
   // HireMe is for developers only now: founder accounts (and accounts that never picked) become developers.

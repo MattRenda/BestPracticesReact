@@ -10,6 +10,7 @@ import { createImporter } from './importer.js';
 import { createApplier, applyReadiness, formDefaults } from './apply/agent.js';
 import { parseResume } from './resume-parse.js';
 import { hiringRoutes } from './hiring.js';
+import { languageOf } from './lang.js';
 
 const WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
@@ -346,7 +347,14 @@ export function createApp(
          ORDER BY COALESCE(r.posted_at, r.created_at) DESC LIMIT 2000`,
       )
       .all({ me: req.user.id, max: MAX_HEADCOUNT });
-    const scored = rows.map((r) => {
+    // English postings only: HireMe applies in English. Each role's language is worked out once and kept.
+    const setLang = db.prepare('UPDATE roles SET lang = ? WHERE id = ?');
+    for (const r of rows)
+      if (r.lang == null) {
+        r.lang = languageOf([r.title, r.description, r.s_one_liner, r.s_about].filter(Boolean).join('\n'));
+        setLang.run(r.lang, r.id);
+      }
+    const scored = rows.filter((r) => !r.lang || r.lang === 'en').map((r) => {
       const overlap = skillList(r.skills).filter((k) => mine.has(k));
       const modeFit = me.work_pref === 'any' || me.work_pref === r.work_mode ? 1 : 0;
       const underpays = me.salary_min && r.salary_max && r.salary_max < me.salary_min ? 1 : 0;

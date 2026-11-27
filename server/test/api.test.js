@@ -337,6 +337,20 @@ test('startups list their own roles: work email at their domain, 50 or fewer, de
   assert.equal((await gmail.req('PUT', `/hiring/roles/${roleId}`, { status: 'open' })).status, 404);
 });
 
+test('roles in another language stay out of the deck', async () => {
+  const dev = client();
+  await dev.signIn('lang@example.com');
+  await dev.req('PUT', '/profile', READY);
+  const ja = listedRole({ name: 'Tokyo AI' });
+  db.prepare('UPDATE roles SET description = ? WHERE id = ?').run('私たちは小売業界向けのAIプラットフォームを開発しています。東京オフィスでエンジニアを募集しています。', ja.rid);
+  const en = listedRole({ name: 'Plain English' });
+  db.prepare('UPDATE roles SET description = ? WHERE id = ?').run('We are building tools for small teams. You will work with our founders on the product.', en.rid);
+  const ids = (await dev.req('GET', '/deck')).body.map((c) => c.id);
+  assert.ok(!ids.includes(ja.rid), 'Japanese posting hidden');
+  assert.ok(ids.includes(en.rid));
+  assert.equal(db.prepare('SELECT lang FROM roles WHERE id = ?').get(ja.rid).lang, 'ja');
+});
+
 test('accounts can be deleted', async () => {
   const dev = client();
   await dev.signIn('leaver@example.com');

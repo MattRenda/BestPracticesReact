@@ -5,6 +5,7 @@
 // It never solves CAPTCHAs and never guesses factual answers (work authorization, sponsorship, salary,
 // start date, demographics…). Those come back to the developer as "needs you", and their answers are saved
 // so the next form that asks gets them automatically.
+import { languageOf, LANGUAGE_NAMES } from '../lang.js';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -289,7 +290,7 @@ export function createApplier(
    * Fills (and unless practicing, submits) one application.
    * @returns {{state:'submitted'|'needs_you'|'failed'|'practiced', error, missing:string[], answers:object[], fieldsFilled, screenshot:Buffer|null}}
    */
-  async function applyTo({ url, profile, job, practice = false }) {
+  async function applyTo({ url, profile, job, practice = false, roleId = null }) {
     const answers = [];
     const resume = await resumeFor(profile);
     const note = await coverNote(env, profile, profile.email, job);
@@ -325,6 +326,16 @@ export function createApplier(
           await apply.click().catch(() => {});
           await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
         }
+      }
+
+      // HireMe applies in English. A posting or form in another language is dropped quietly, for everyone.
+      const texts = await page
+        .evaluate(() => [document.body?.innerText || '', [...document.querySelectorAll('label, legend')].map((e) => e.innerText).join(' ')])
+        .catch(() => ['', '']);
+      const pageLang = [languageOf(texts[1]), languageOf(texts[0])].find((l) => l && l !== 'en') || '';
+      if (pageLang && pageLang !== 'en') {
+        if (roleId) db.prepare('UPDATE roles SET lang = ? WHERE id = ?').run(pageLang, roleId);
+        return await done('canceled', `The application is in ${LANGUAGE_NAMES[pageLang] || 'another language'}, so HireMe skipped it`);
       }
 
       let filled = 0;
@@ -440,10 +451,10 @@ export function createApplier(
     if (!url) return { state: 'failed', error: 'No application page for this role' };
     // "Review before sending": fill everything, stop short of Submit, and wait for the developer's OK.
     if (profile.review_first && !app.approved) {
-      const r = await applyTo({ url, profile, job, practice: true });
+      const r = await applyTo({ url, profile, job, practice: true, roleId: role.id });
       return r.state === 'practiced' ? { ...r, state: 'review', error: '' } : r;
     }
-    return applyTo({ url, profile, job });
+    return applyTo({ url, profile, job, roleId: role.id });
   }
 
   /**
