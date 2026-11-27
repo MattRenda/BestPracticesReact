@@ -90,7 +90,7 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
         .prepare("SELECT u.*, s.hash FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.hash = ? AND s.expires_at > datetime('now')")
         .get(sha(token));
       if (row) {
-        req.user = { id: row.id, email: row.is_guest ? '' : row.email, role: row.role, isAdmin: !row.is_guest && isAdmin(row), isGuest: !!row.is_guest };
+        req.user = { id: row.id, email: row.is_guest ? '' : row.email, role: row.role, isAdmin: !row.is_guest && isAdmin(row), isGuest: !!row.is_guest, pendingEmail: row.is_guest ? row.pending_email || '' : '' };
         if (!row.last_seen_at || Date.now() - new Date(`${row.last_seen_at}Z`).getTime() > 60_000)
           db.prepare("UPDATE users SET last_seen_at = datetime('now') WHERE id = ?").run(row.id);
       }
@@ -126,17 +126,22 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
 
       const token = randomBytes(32).toString('base64url');
       db.prepare("DELETE FROM login_tokens WHERE expires_at < datetime('now')").run();
-      db.prepare(`INSERT INTO login_tokens (hash, email, intent, guest_id, expires_at) VALUES (?, ?, '', ?, datetime('now', '+${LINK_MINUTES} minutes'))`).run(
+      // A guest confirming their email gets a day: their applications wait on this link.
+      const minutes = guestOf(req) ? 24 * 60 : LINK_MINUTES;
+      db.prepare(`INSERT INTO login_tokens (hash, email, intent, guest_id, expires_at) VALUES (?, ?, '', ?, datetime('now', '+${minutes} minutes'))`).run(
         sha(token),
         email,
         guestOf(req),
       );
+      if (guestOf(req)) db.prepare('UPDATE users SET pending_email = ? WHERE id = ?').run(email, guestOf(req));
       const link = `${baseUrl(req)}/#/signin/${token}`;
       try {
         await mailer.send({
           to: email,
-          subject: 'Your HireMe sign-in link',
-          text: `Open this link to sign in to HireMe:\n\n${link}\n\nIt works once and expires in ${LINK_MINUTES} minutes. If you didn’t ask for it, ignore this email.`,
+          subject: guestOf(req) ? 'Confirm your email to start applying' : 'Your HireMe sign-in link',
+          text: guestOf(req)
+            ? `Tap this link to confirm your email. HireMe then sends the applications for the jobs you swipe right on, with this email as your contact:\n\n${link}\n\nIt works once and expires in 24 hours. If this wasn’t you, ignore this email and nothing will be sent.`
+            : `Open this link to sign in to HireMe:\n\n${link}\n\nIt works once and expires in ${LINK_MINUTES} minutes. If you didn’t ask for it, ignore this email.`,
         });
       } catch (e) {
         log.error?.('sign-in email failed:', e.message);

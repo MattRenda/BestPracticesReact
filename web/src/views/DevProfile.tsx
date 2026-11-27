@@ -2,7 +2,6 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { api, uploadResumeFile } from '../api'
 import type { DevProfile, WorkPref } from '../types'
 import { Toast } from '../components/ui'
-import { CONSENT_TEXT } from '../components/ApplySetup'
 import { SaveAccount } from '../components/SaveAccount'
 import { useToast } from '../lib'
 
@@ -13,7 +12,7 @@ const PREFS: [WorkPref, string][] = [
   ['any', 'Open to anything'],
 ]
 
-export function DevProfileView({ isGuest, onSaved }: { isGuest: boolean; onSaved: () => void }) {
+export function DevProfileView({ isGuest, pendingEmail, onSaved }: { isGuest: boolean; pendingEmail: string; onSaved: () => void }) {
   const [p, setP] = useState<DevProfile | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -73,7 +72,13 @@ export function DevProfileView({ isGuest, onSaved }: { isGuest: boolean; onSaved
       setP(saved)
       setDirty(false)
       onSaved()
-      setToast(saved.complete ? 'Profile saved' : 'Saved. Add your name, headline and skills to start swiping.')
+      setToast(
+        saved.sent?.length
+          ? `Saved. Applying to ${saved.sent.length === 1 ? saved.sent[0] : `${saved.sent.length} startups`} you swiped right on`
+          : saved.complete
+            ? 'Profile saved'
+            : 'Saved. Add your name, headline and skills to start swiping.',
+      )
     } catch (err) {
       setToast((err as Error).message)
     } finally {
@@ -112,8 +117,16 @@ export function DevProfileView({ isGuest, onSaved }: { isGuest: boolean; onSaved
       {isGuest && (
         <section className="guest-save">
           <SaveAccount
-            title="Keep your profile"
-            sub="Add your email so HireMe can send applications and you can come back from any device. No password."
+            title={pendingEmail ? 'Confirm your email' : 'Add your email'}
+            sub={
+              pendingEmail ? (
+                <>
+                  We sent a link to <strong>{pendingEmail}</strong>. Tap it and your applications go out. Wrong address or no email? Send a new link here.
+                </>
+              ) : (
+                'HireMe sends your applications once you confirm your email. No password.'
+              )
+            }
           />
         </section>
       )}
@@ -323,15 +336,7 @@ function ApplyingSection({
   return (
     <fieldset className="group">
       <legend>Applying for you</legend>
-      <p className="group-note">When you swipe right, HireMe fills out and submits the startup’s application with these.</p>
-      <label className="toggle">
-        <input type="checkbox" checked={!!p.auto_apply} onChange={(e) => update({ auto_apply: e.target.checked })} />
-        <span className="toggle-track" aria-hidden="true" />
-        <span className="toggle-text">
-          <span>Apply for me</span>
-          <small>{CONSENT_TEXT}</small>
-        </span>
-      </label>
+      <p className="group-note">When you swipe right, HireMe fills out and sends the startup’s application with these. It asks you about anything it can’t answer truthfully.</p>
       <label className="field">
         <span>Phone</span>
         <input type="tel" autoComplete="tel" value={p.phone ?? ''} onChange={(e) => update({ phone: e.target.value })} />
@@ -359,7 +364,7 @@ function ApplyingSection({
           </p>
         ) : (
           <p className="resume-row">
-            <span className="muted small">None uploaded. HireMe makes one from your experience above.</span>
+            <span className="muted small">None uploaded. HireMe makes one from your profile; uploading yours makes applications stronger.</span>
             <label className="btn ghost small upload">
               {uploading ? 'Uploading…' : 'Upload PDF'}
               <input type="file" accept="application/pdf,.pdf" onChange={upload} disabled={uploading} />

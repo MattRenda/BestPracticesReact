@@ -546,3 +546,9 @@ a { color: var(--moss); }
 .guest-save h2 { font-size: var(--t-xl); }
 .save-account { display: flex; flex-direction: column; gap: 10px; }
 .save-account h2 { font-size: var(--t-xl); }
+.swipe-note { margin: 0 auto 10px; max-width: 460px; font-size: var(--t-sm); color: var(--muted); background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 8px 12px; }
+.swipe-note.lit { border-color: var(--pollen); background: var(--pollen-wash); color: var(--ink); }
+.swipe-note .link-btn { font-size: inherit; }
+.ob-known { margin: 4px 0; font-size: var(--t-lg); }
+.ob-google { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.ob-fine { color: var(--muted); font-size: 0.8rem; line-height: 1.5; margin-top: 4px; }

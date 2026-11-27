@@ -1,7 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
 import { GoogleButton } from './GoogleButton'
-import { SENT_KEY } from '../lib'
 
 /**
  * Email (one-time link) or Google. For a guest, whatever they've done so far moves to the account.
@@ -32,11 +31,6 @@ export function SaveAccount({
       const problem = await before?.()
       if (problem) return setState({ kind: 'error', msg: problem })
       const r = await api.startSignIn(email.trim())
-      try {
-        localStorage.setItem(SENT_KEY, email.trim())
-      } catch {
-        /* fine */
-      }
       setState({ kind: 'sent', devLink: r.devLink })
     } catch (err) {
       setState({ kind: 'error', msg: (err as Error).message })

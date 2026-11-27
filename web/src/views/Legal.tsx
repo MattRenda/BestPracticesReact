@@ -49,9 +49,9 @@ export function Privacy() {
       <ul>
         <li>Your profile isn’t public and isn’t shown to companies on HireMe. Companies only receive what HireMe sends in an application you asked for.</li>
         <li>
-          <strong>Applying for you:</strong> if you turn on “Apply for me,” then when you swipe right on a role, we send your name, email, phone, links, location, work
+          <strong>Applying for you:</strong> when you swipe right on a role, we send your name, email, phone, links, location, work
           authorization answers, resume, a cover note, and answers to the form’s questions to that company’s job application. We only do this for roles you swipe right
-          on.
+          on, and only after you’ve confirmed your email.
         </li>
         <li>We email you sign-in links and updates about your applications.</li>
         <li>We don’t sell your information or use it for advertising.</li>
@@ -102,8 +102,8 @@ export function Terms() {
 
       <h2>Applying for you</h2>
       <p>
-        If you turn on “Apply for me,” you authorize HireMe to submit applications in your name, using your profile and saved answers, to roles you swipe right on, including accepting those forms’ standard privacy acknowledgments. Review your profile so what’s sent is accurate. HireMe asks you directly
-        about work authorization, sponsorship, salary and similar questions rather than guessing. You can turn this off at any time.
+        Swiping right on a role authorizes HireMe to submit an application to it in your name, using your profile and saved answers, including accepting those forms’ standard privacy acknowledgments. Review your profile so what’s sent is accurate. HireMe asks you directly
+        about work authorization, sponsorship, salary and similar questions rather than guessing. Undo a swipe before HireMe starts the application to stop it.
       </p>
 
       <h2>Listings and outcomes</h2>

@@ -7,8 +7,10 @@ export interface User {
   email: string
   role: Role
   isAdmin: boolean
-  /** Started without signing up; email is '' until they add one. */
+  /** Started without signing up; email is '' until they confirm one. */
   isGuest: boolean
+  /** A guest's email, waiting for them to tap the confirmation link. */
+  pendingEmail: string
 }
 
 export interface Links {
@@ -35,9 +37,10 @@ export interface DevProfile {
   needs_sponsorship?: '' | 'yes' | 'no'
   has_resume?: boolean
   resume_name?: string | null
-  auto_apply?: boolean
   saved_answers?: { question: string; answer: string }[]
   applyMissing?: ApplyField[]
+  /** After saving: startups HireMe started applying to because the profile became ready. */
+  sent?: string[]
 }
 
 export type ApplyField = 'name' | 'phone' | 'work_authorized' | 'needs_sponsorship' | 'resume'
@@ -107,10 +110,9 @@ export interface RoleCard {
 
 export interface SwipeResult {
   apply_url: string
-  /** A guest swiped right: ask for an email so HireMe can send it. */
-  needsAccount: boolean
   application: Application | null
-  applySetup: { missing: ApplyField[]; consented: boolean } | null
+  /** Kept, not sent yet: waiting on a confirmed email, or on details missing from the profile. */
+  waiting: 'email' | 'profile' | null
 }
 
 export interface SavedRole {

@@ -147,7 +147,7 @@ test('developers see imported roles, ranked by shared skills; a yes starts an ap
 
   const r = (await dev.req('POST', `/deck/${tr.id}`, { liked: true })).body;
   assert.ok(r.apply_url.includes('/application'));
-  assert.ok(r.applySetup.missing.includes('phone'), 'asks for what it still needs before applying');
+  assert.equal(r.waiting, 'profile', 'kept until the phone and work questions are filled in');
   const saved = (await dev.req('GET', '/saved')).body;
   assert.equal(saved[0].startup_name, 'Tiny Rocket');
 });

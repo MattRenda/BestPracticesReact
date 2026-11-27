@@ -45,7 +45,7 @@ export const api = {
     call<{ resume_name: string; parsed?: Partial<DevProfile>; unreadable?: boolean }>('POST', '/profile/resume', { name, data, parse }),
   deleteResume: () => call<void>('DELETE', '/profile/resume'),
   applications: () => call<Application[]>('GET', '/applications'),
-  apply: (roleId: number, consent: boolean) => call<Application>('POST', '/applications', { roleId, consent }),
+  apply: (roleId: number) => call<Application>('POST', '/applications', { roleId }),
   answerApplication: (id: number, answers: { question: string; answer: string }[]) => call<Application>('POST', `/applications/${id}/answers`, { answers }),
   retryApplication: (id: number) => call<Application>('POST', `/applications/${id}/retry`),
   selfApplied: (id: number) => call<void>('POST', `/applications/${id}/self`),

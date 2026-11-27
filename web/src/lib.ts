@@ -21,21 +21,3 @@ export function ago(iso: string | null | undefined) {
   const d = Math.floor(h / 24)
   return d < 30 ? `${d}d ago` : `${Math.floor(d / 30)}mo ago`
 }
-
-export const SENT_KEY = 'hireme-link-sent'
-
-/** The email a sign-in link was sent to from this browser, while the person is still a guest. */
-export function linkSentTo(): string {
-  try {
-    return localStorage.getItem(SENT_KEY) || ''
-  } catch {
-    return ''
-  }
-}
-export function forgetLinkSent() {
-  try {
-    localStorage.removeItem(SENT_KEY)
-  } catch {
-    /* nothing kept */
-  }
-}

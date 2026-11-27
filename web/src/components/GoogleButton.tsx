@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import { forgetLinkSent } from '../lib'
 
 // Minimal types for Google Identity Services (https://accounts.google.com/gsi/client)
 type GoogleId = {
@@ -60,7 +59,6 @@ export function GoogleButton({ onError, before }: { onError: (msg: string) => vo
               const problem = await latest.current.before?.()
               if (problem) throw new Error(problem)
               const r = await api.googleSignIn(credential)
-              forgetLinkSent()
               location.hash = r.sent?.length ? '#/applications' : '#/discover'
               location.reload()
             } catch (e) {

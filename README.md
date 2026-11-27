@@ -3,10 +3,11 @@
 Sprout-style job applying, for startups only. Developers swipe through engineering roles at startups with 50 or fewer people; swipe right and HireMe fills out and submits the application for them. No recruiters, no big companies, nothing for companies to sign up for.
 
 - **Discover:** one role per card, ranked by shared skills, work style and salary floor.
-- **Swipe right:** HireMe applies (the first time it asks for a few details and consent). **Swipe left:** skip. Undo works until HireMe starts the application.
+- **Swipe right:** HireMe applies. Nothing to fill in at swipe time; everything applications need is gathered while getting started. **Swipe left:** skip. Undo works until HireMe starts the application.
 - **Applications:** every application, its status, what was sent and a screenshot of the form. Questions HireMe can't answer truthfully show up as "Needs you".
-- **Getting started:** no sign-up form. "Find a startup job" starts a guest session and asks a few one-tap questions (what you build, skills, years, how you like to work, US work authorization and sponsorship, LinkedIn/GitHub/portfolio, name), or reads a resume and asks only what's left. Then you're swiping.
-- **Email only when it matters:** a guest's first right swipe asks where the startup should reach them (email, phone, resume if needed). Tapping the emailed link, or using Google, turns the guest into an account and sends every right swipe so far. Signing in to an existing account keeps that account's profile and brings the swipes along. Guests that never add an email are deleted after 30 days.
+- **Getting started:** no sign-up form. "Find a startup job" starts a guest session and asks a few one-tap questions (what you build, skills, years, how you like to work, US work authorization and sponsorship, LinkedIn/GitHub/portfolio, name, and where startups should reach you), or reads a resume and asks only what's left. Then you're swiping.
+- **Email confirmation, without stopping the swiping:** guests get a one-tap link to confirm their email (valid 24 hours). Right swipes are kept until then and all go out when it's tapped, even on another device; "Continue with Google" confirms instantly. Signing in to an existing account keeps that account's profile and brings the swipes along. Guests that never confirm are deleted after 30 days.
+- **No resume needed:** without an uploaded PDF, HireMe builds a resume from the profile.
 
 ## How the startup-only rule is enforced
 
@@ -34,8 +35,8 @@ Admins can run or watch imports from the Admin tab. Set `IMPORT_JOBS=off` to dis
 
 Like Sprout, HireMe applies for the developer (`server/src/apply/`):
 
-1. The first time a developer swipes right, HireMe asks for what forms need (phone, US work authorization, sponsorship, a resume PDF or their experience) and for consent to apply automatically.
-2. After that, every right swipe queues an application. A background worker opens the company's form in headless Chromium, fills it from the profile, attaches their resume (uploaded, or generated from the profile) and a cover note, and submits. It checks for a confirmation and keeps a screenshot.
+1. Getting started collects what forms need (phone, US work authorization, sponsorship, links; a resume is optional). Swiping right is the go-ahead.
+2. Every right swipe queues an application. If a detail is missing, the swipe waits and goes out as soon as the profile is complete. A background worker opens the company's form in headless Chromium, fills it from the profile, attaches their resume (uploaded, or generated from the profile) and a cover note, and submits. It checks for a confirmation and keeps a screenshot.
 3. Open-ended questions ("Why do you want to work here?") are drafted by Claude from the profile and job post when `ANTHROPIC_API_KEY` is set (otherwise a short template). **Factual questions are never drafted**: work authorization, sponsorship, salary, start date, location, demographics and similar come only from the developer.
 4. Anything it can't finish (a CAPTCHA, a question only the developer can answer, a form error) shows up under **Applications** as "Needs you". Answers given there are saved and reused on later forms. Developers can always finish on the company's site instead.
 

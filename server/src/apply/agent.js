@@ -39,7 +39,7 @@ export function applyReadiness(p) {
   if (!p?.phone) missing.push('phone');
   if (!['yes', 'no'].includes(p?.work_authorized)) missing.push('work_authorized');
   if (!['yes', 'no'].includes(p?.needs_sponsorship)) missing.push('needs_sponsorship');
-  if (!p?.resume_file && !p?.experience) missing.push('resume');
+  // No resume uploaded is fine: HireMe builds one from the profile (see resumeFor).
   return missing;
 }
 

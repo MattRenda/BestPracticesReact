@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'reac
 import { api, uploadResumeFile } from '../api'
 import type { DevProfile, Links, WorkPref } from '../types'
 import { SaveAccount } from '../components/SaveAccount'
+import { GoogleButton } from '../components/GoogleButton'
 import { Sheet } from '../components/ui'
 
 // A few taps, one question at a time, then straight into the deck. No "create an account" step:
@@ -49,10 +50,11 @@ type Draft = {
   experience: string
   phone: string
   resume: string
+  email: string
 }
-const EMPTY: Draft = { kinds: [], skills: [], years: null, work: '', location: '', auth: '', sponsor: '', links: {}, first: '', last: '', headline: '', bio: '', experience: '', phone: '', resume: '' }
+const EMPTY: Draft = { kinds: [], skills: [], years: null, work: '', location: '', auth: '', sponsor: '', links: {}, first: '', last: '', headline: '', bio: '', experience: '', phone: '', resume: '', email: '' }
 const KEY = 'hireme-onboarding'
-type Step = 'kinds' | 'skills' | 'years' | 'work' | 'auth' | 'links' | 'name' | 'review'
+type Step = 'kinds' | 'skills' | 'years' | 'work' | 'auth' | 'links' | 'name' | 'review' | 'contact'
 
 function loadDraft(): Draft {
   try {
@@ -99,7 +101,7 @@ function kindsFrom(text: string) {
   return out.slice(0, 3)
 }
 
-export function Onboarding({ isGuest, onDone }: { isGuest: boolean; onDone: () => void }) {
+export function Onboarding({ isGuest, email, onDone }: { isGuest: boolean; email: string; onDone: () => void }) {
   const [d, setD] = useState<Draft>(loadDraft)
   const [step, setStep] = useState(0)
   const [reading, setReading] = useState(false)
@@ -120,8 +122,8 @@ export function Onboarding({ isGuest, onDone }: { isGuest: boolean; onDone: () =
 
   // With a resume, most questions are already answered: confirm what we read, then only ask the rest.
   const steps: Step[] = d.resume
-    ? ['review', 'work', 'auth', ...(d.links.github || d.links.linkedin || d.links.portfolio ? [] : (['links'] as Step[]))]
-    : ['kinds', 'skills', 'years', 'work', 'auth', 'links', 'name']
+    ? ['review', 'work', 'auth', ...(d.links.github || d.links.linkedin || d.links.portfolio ? [] : (['links'] as Step[])), 'contact']
+    : ['kinds', 'skills', 'years', 'work', 'auth', 'links', 'name', 'contact']
   const current = steps[Math.min(step, steps.length - 1)]
   const last = step >= steps.length - 1
   const next = () => (last ? finish() : setStep(step + 1))
@@ -151,7 +153,7 @@ export function Onboarding({ isGuest, onDone }: { isGuest: boolean; onDone: () =
         links: { ...p.links, ...Object.fromEntries(Object.entries(d.links).filter(([, v]) => v)) },
         bio: p.bio ?? '',
         experience: p.experience ?? '',
-        phone: p.phone ?? '',
+        phone: d.phone || p.phone || '',
         kinds: d.kinds.length ? d.kinds : kindsFrom(`${p.headline ?? ''} ${p.skills ?? ''}`),
       })
       setStep(0)
@@ -163,45 +165,53 @@ export function Onboarding({ isGuest, onDone }: { isGuest: boolean; onDone: () =
     }
   }
 
-  async function finish(e?: FormEvent) {
-    e?.preventDefault()
+  /** Saves the profile. Returns an error message instead of throwing, so Google sign-in can use it too. */
+  async function saveProfile(): Promise<string | void> {
     if (!d.first.trim() || !d.last.trim()) {
-      setError('Add your first and last name — it goes on your applications.')
-      if (d.resume) setStep(0)
-      return
+      setStep(steps.indexOf(d.resume ? 'review' : 'name'))
+      return 'Add your first and last name — it goes on your applications.'
     }
     if (!d.skills.length) {
-      setError('Pick at least one thing you work with.')
       setStep(steps.indexOf(d.resume ? 'review' : 'skills'))
-      return
+      return 'Pick at least one thing you work with.'
     }
+    if (!/^[+()\d][\d\s().+-]{6,}$/.test(d.phone.trim())) return 'Add a phone number — every application asks for one.'
+    const profile: DevProfile = {
+      name: `${d.first.trim()} ${d.last.trim()}`,
+      headline: headlineFor(d).slice(0, 120),
+      location: d.location.trim(),
+      work_pref: d.work || 'any',
+      years: d.years,
+      skills: d.skills.join(', '),
+      bio: d.bio,
+      experience: d.experience,
+      links: {
+        github: normalizeLink('github', d.links.github ?? ''),
+        linkedin: normalizeLink('linkedin', d.links.linkedin ?? ''),
+        portfolio: normalizeLink('portfolio', d.links.portfolio ?? ''),
+      },
+      phone: d.phone.trim(),
+      work_authorized: d.auth,
+      needs_sponsorship: d.sponsor,
+    }
+    await api.saveProfile(profile)
+    try {
+      sessionStorage.removeItem(KEY)
+    } catch {
+      /* nothing to clean up */
+    }
+  }
+
+  async function finish(e?: FormEvent) {
+    e?.preventDefault()
     setSaving(true)
     setError('')
     try {
-      const profile: DevProfile = {
-        name: `${d.first.trim()} ${d.last.trim()}`,
-        headline: headlineFor(d).slice(0, 120),
-        location: d.location.trim(),
-        work_pref: d.work || 'any',
-        years: d.years,
-        skills: d.skills.join(', '),
-        bio: d.bio,
-        experience: d.experience,
-        links: {
-          github: normalizeLink('github', d.links.github ?? ''),
-          linkedin: normalizeLink('linkedin', d.links.linkedin ?? ''),
-          portfolio: normalizeLink('portfolio', d.links.portfolio ?? ''),
-        },
-        phone: d.phone,
-        work_authorized: d.auth,
-        needs_sponsorship: d.sponsor,
-      }
-      await api.saveProfile(profile)
-      try {
-        sessionStorage.removeItem(KEY)
-      } catch {
-        /* nothing to clean up */
-      }
+      // Guests confirm their email with a one-tap link; applications wait for it, swiping doesn't.
+      if (isGuest && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.email.trim())) throw new Error('Add your email — startups reply to it.')
+      const problem = await saveProfile()
+      if (problem) throw new Error(problem)
+      if (isGuest) await api.startSignIn(d.email.trim())
       location.hash = '#/discover'
       onDone()
     } catch (err) {
@@ -342,6 +352,38 @@ export function Onboarding({ isGuest, onDone }: { isGuest: boolean; onDone: () =
         </>
       )
       break
+    case 'contact':
+      canGo = (!isGuest || !!d.email.trim()) && !!d.phone.trim()
+      body = (
+        <>
+          <Q title="Where should startups reach you?" sub="This goes on your applications. After this it’s just swiping." />
+          {isGuest ? (
+            <label className="field ob-field">
+              <span>Email</span>
+              <input type="email" value={d.email} onChange={(e) => update({ email: e.target.value })} autoComplete="email" placeholder="you@example.com" />
+            </label>
+          ) : (
+            <p className="ob-known">
+              Email <strong>{email}</strong>
+            </p>
+          )}
+          <label className="field ob-field">
+            <span>Phone</span>
+            <input type="tel" value={d.phone} onChange={(e) => update({ phone: e.target.value })} autoComplete="tel" placeholder="(555) 010-2233" />
+          </label>
+          {isGuest && (
+            <div className="ob-google">
+              <GoogleButton before={saveProfile} onError={setError} />
+            </div>
+          )}
+          <p className="fine ob-fine">
+            Swipe right and HireMe applies for you: it fills out the startup’s application with these details and your resume, answers open-ended questions from your profile,
+            and sends it. It never guesses things like salary or start dates; it asks you.
+            {isGuest && ' We’ll email a link to confirm your address before the first one goes out.'}
+          </p>
+        </>
+      )
+      break
     case 'review':
       canGo = !!d.first.trim() && !!d.last.trim() && d.skills.length > 0
       body = (
@@ -427,7 +469,7 @@ export function Onboarding({ isGuest, onDone }: { isGuest: boolean; onDone: () =
           )}
           {current !== 'years' && (
             <button className="btn primary" disabled={!canGo || saving || reading}>
-              {saving ? 'Finding startups…' : last ? 'Show me jobs' : current === 'links' && !Object.values(d.links).some(Boolean) ? 'Skip' : 'Continue'}
+              {saving ? 'Finding startups…' : last ? 'Start swiping' : current === 'links' && !Object.values(d.links).some(Boolean) ? 'Skip' : 'Continue'}
             </button>
           )}
         </div>

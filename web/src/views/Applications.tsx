@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import type { Application, ApplyField, SavedRole } from '../types'
-import { ApplySetup } from '../components/ApplySetup'
+import type { Application, SavedRole } from '../types'
 import { Sheet, Toast } from '../components/ui'
 import { ago, useToast } from '../lib'
 
@@ -10,7 +9,6 @@ export function Applications({ onChange }: { onChange: () => void }) {
   const [apps, setApps] = useState<Application[] | null>(null)
   const [saved, setSaved] = useState<SavedRole[]>([])
   const [openApp, setOpenApp] = useState<Application | null>(null)
-  const [setup, setSetup] = useState<{ roleId: number; startupName: string; applyUrl: string; missing: ApplyField[]; consented: boolean } | null>(null)
   const [toast, setToast] = useToast()
 
   const load = useCallback(() => {
@@ -26,14 +24,10 @@ export function Applications({ onChange }: { onChange: () => void }) {
 
   async function applyNow(r: SavedRole) {
     try {
-      const p = await api.profile()
-      const missing = p.applyMissing ?? []
-      if (p.auto_apply && !missing.length) {
-        await api.apply(r.id, false)
-        setToast(`Applying to ${r.startup_name} for you`)
-        load()
-        onChange()
-      } else setSetup({ roleId: r.id, startupName: r.startup_name, applyUrl: r.apply_url, missing, consented: !!p.auto_apply })
+      await api.apply(r.id)
+      setToast(`Applying to ${r.startup_name}`)
+      load()
+      onChange()
     } catch (e) {
       setToast((e as Error).message)
     }
@@ -74,7 +68,9 @@ export function Applications({ onChange }: { onChange: () => void }) {
       {saved.length > 0 && (
         <section className="saved">
           <h2>Not sent yet</h2>
-          <p className="muted small">You swiped right, but HireMe still needed a few details before it could apply.</p>
+          <p className="muted small">
+            You swiped right, but HireMe still needs a detail from your <a href="#/profile">profile</a>. They go out as soon as it’s filled in.
+          </p>
           <ul className="threads">
             {saved.map((r) => (
               <li key={r.id} className="saved-row">
@@ -89,7 +85,7 @@ export function Applications({ onChange }: { onChange: () => void }) {
                   ) : (
                     <>
                       <button type="button" className="btn primary small" onClick={() => applyNow(r)}>
-                        Apply for me
+                        Send now
                       </button>
                       <a className="link-btn" href={r.apply_url} target="_blank" rel="noreferrer noopener">
                         Their site ↗
@@ -107,15 +103,6 @@ export function Applications({ onChange }: { onChange: () => void }) {
         app={openApp}
         onClose={() => setOpenApp(null)}
         onChanged={() => {
-          load()
-          onChange()
-        }}
-      />
-      <ApplySetup
-        target={setup}
-        onClose={() => setSetup(null)}
-        onQueued={(name) => {
-          setToast(`Applying to ${name} for you`)
           load()
           onChange()
         }}

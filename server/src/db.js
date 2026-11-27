@@ -181,7 +181,10 @@ export function openDb(file = DB_PATH) {
     ['posted_at', 'TEXT'],
   ]);
   // Guests: people who started without signing up. A placeholder email until they add a real one.
-  addColumns('users', [['is_guest', 'INTEGER NOT NULL DEFAULT 0']]);
+  addColumns('users', [
+    ['is_guest', 'INTEGER NOT NULL DEFAULT 0'],
+    ['pending_email', 'TEXT'], // a guest's email, waiting for them to tap the confirmation link
+  ]);
   // The guest account that asked for a sign-in link, so its answers and swipes carry over.
   addColumns('login_tokens', [['guest_id', 'INTEGER']]);
   // What HireMe needs to apply on a developer's behalf.
@@ -191,7 +194,7 @@ export function openDb(file = DB_PATH) {
     ['needs_sponsorship', "TEXT NOT NULL DEFAULT ''"],
     ['resume_file', 'TEXT'], // stored under <data>/resumes
     ['resume_name', 'TEXT'],
-    ['auto_apply', 'INTEGER NOT NULL DEFAULT 0'], // consent to apply automatically on a yes
+    ['auto_apply', 'INTEGER NOT NULL DEFAULT 0'], // no longer used: swiping right is the consent
     ['saved_answers', "TEXT NOT NULL DEFAULT '[]'"], // [{question, answer}]
   ]);
   db.exec(`

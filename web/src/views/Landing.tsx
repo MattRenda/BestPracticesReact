@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { GoogleButton } from '../components/GoogleButton'
-import { forgetLinkSent } from '../lib'
 
 export function Landing({ onStart }: { onStart: () => void }) {
   const [starting, setStarting] = useState(false)
@@ -133,7 +132,6 @@ export function SignIn({ token, onDone }: { token: string; onDone: () => void })
     ran.current = true
     api.verify(token).then(
       async (r) => {
-        forgetLinkSent()
         // Applications that went out because of this sign-in are waiting in Applications.
         history.replaceState(null, '', r.sent?.length ? '/#/applications' : '/#/discover')
         await onDone()

@@ -101,7 +101,7 @@ export function createApp(
   const getProfile = (userId) => {
     const p = db.prepare('SELECT * FROM dev_profiles WHERE user_id = ?').get(userId);
     return p
-      ? { ...p, links: parse(p.links, {}), visible: !!p.visible, auto_apply: !!p.auto_apply, saved_answers: parse(p.saved_answers, []), resume_file: undefined, has_resume: !!p.resume_file }
+      ? { ...p, links: parse(p.links, {}), visible: !!p.visible, auto_apply: undefined, saved_answers: parse(p.saved_answers, []), resume_file: undefined, has_resume: !!p.resume_file }
       : null;
   };
   const profileComplete = (p) => !!(p && p.name && p.headline && p.skills);
@@ -115,7 +115,7 @@ export function createApp(
     const u = req.user;
     const profile = getProfile(u.id);
     const out = {
-      user: { ...u, isGuest: !!u.isGuest },
+      user: { ...u, isGuest: !!u.isGuest, pendingEmail: u.pendingEmail || '' },
       profile,
       profileComplete: profileComplete(profile),
       counts: { needsYou: db.prepare("SELECT COUNT(*) n FROM applications WHERE dev_id = ? AND state = 'needs_you'").get(u.id).n },
@@ -128,7 +128,7 @@ export function createApp(
   /**
    * A guest (someone who started without signing up) just signed in as `userId`. Moves the guest's
    * profile and swipes over unless the account already has a finished profile, then sends the
-   * applications the guest swiped right on if the developer agreed to "Apply for me".
+   * applications the guest swiped right on (swiping right is the go-ahead).
    * Returns the startups HireMe started applying to.
    */
   function claimGuest(guestId, userId) {
@@ -146,9 +146,9 @@ export function createApp(
         if (gp.resume_file && !tp.resume_file) db.prepare('UPDATE dev_profiles SET resume_file = ?, resume_name = ? WHERE user_id = ?').run(gp.resume_file, gp.resume_name, userId);
         else if (gp.resume_file) applier.removeFilesFor(guestId, gp.resume_file);
         db.prepare(
-          `UPDATE dev_profiles SET auto_apply = MAX(auto_apply, ?), phone = COALESCE(NULLIF(phone, ''), ?),
+          `UPDATE dev_profiles SET phone = COALESCE(NULLIF(phone, ''), ?),
              work_authorized = COALESCE(NULLIF(work_authorized, ''), ?), needs_sponsorship = COALESCE(NULLIF(needs_sponsorship, ''), ?) WHERE user_id = ?`,
-        ).run(gp.auto_apply, gp.phone, gp.work_authorized, gp.needs_sponsorship, userId);
+        ).run(gp.phone, gp.work_authorized, gp.needs_sponsorship, userId);
       }
       db.prepare('UPDATE OR IGNORE dev_swipes SET dev_id = ? WHERE dev_id = ?').run(userId, guestId);
       db.prepare('UPDATE OR IGNORE reports SET reporter_id = ? WHERE reporter_id = ?').run(userId, guestId);
@@ -157,16 +157,26 @@ export function createApp(
     return { sent: sendLiked(userId, liked) };
   }
 
-  /** Queues applications for right swipes that haven't been sent, if the developer is ready and agreed. */
+  /** Recent right swipes HireMe hasn't applied to yet (never tried, so a canceled one isn't sent again). */
+  const unsentLiked = (userId) =>
+    db
+      .prepare(
+        `SELECT d.role_id FROM dev_swipes d WHERE d.dev_id = ? AND d.liked = 1 AND d.created_at > datetime('now', '-14 days')
+           AND NOT EXISTS (SELECT 1 FROM applications a WHERE a.dev_id = d.dev_id AND a.role_id = d.role_id)`,
+      )
+      .all(userId)
+      .map((r) => r.role_id);
+
+  /** Swiping right is the go-ahead: queues applications for these roles once the developer is ready. */
   function sendLiked(userId, roleIds) {
     const p = applier.profileFor(userId);
-    if (!roleIds.length || !p?.auto_apply || applyReadiness(p).length) return [];
+    if (!roleIds.length || applyReadiness(p).length) return [];
     const sent = [];
     for (const id of roleIds) {
       const role = db
         .prepare(`SELECT r.id, s.name FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.id = @id AND ${LIVE}`)
         .get({ id, max: MAX_HEADCOUNT });
-      const already = db.prepare("SELECT 1 FROM applications WHERE dev_id = ? AND role_id = ? AND state != 'canceled'").get(userId, id);
+      const already = db.prepare('SELECT 1 FROM applications WHERE dev_id = ? AND role_id = ?').get(userId, id);
       if (role && !already) {
         applier.enqueue(userId, id);
         sent.push(role.name);
@@ -222,7 +232,7 @@ export function createApp(
       phone: str(b.phone, 40),
       work_authorized: oneOf(b.work_authorized, ['yes', 'no'], ''),
       needs_sponsorship: oneOf(b.needs_sponsorship, ['yes', 'no'], ''),
-      auto_apply: b.auto_apply ? 1 : 0,
+      auto_apply: 1,
       saved_answers: JSON.stringify(
         (Array.isArray(b.saved_answers) ? b.saved_answers : [])
           .map((a) => ({ question: str(a?.question, 300), answer: str(a?.answer, 2000) }))
@@ -241,7 +251,9 @@ export function createApp(
          saved_answers=@saved_answers, updated_at=datetime('now')`,
     ).run({ user_id: req.user.id, ...p });
     const saved = getProfile(req.user.id);
-    res.json({ ...saved, complete: profileComplete(saved), applyMissing: applyReadiness(applier.profileFor(req.user.id)) });
+    // Right swipes that were waiting on missing details go out now that they're filled in.
+    const sent = req.user.isGuest ? [] : sendLiked(req.user.id, unsentLiked(req.user.id));
+    res.json({ ...saved, complete: profileComplete(saved), applyMissing: applyReadiness(applier.profileFor(req.user.id)), sent });
   });
 
   // ---------- resume file ----------
@@ -334,13 +346,14 @@ export function createApp(
       `INSERT INTO dev_swipes (dev_id, role_id, liked) VALUES (?, ?, ?)
        ON CONFLICT (dev_id, role_id) DO UPDATE SET liked = excluded.liked, created_at = datetime('now')`,
     ).run(req.user.id, roleId, liked);
-    const out = { apply_url: role.apply_url, application: null, applySetup: null, needsAccount: false };
-    if (liked && req.user.isGuest) out.needsAccount = true; // sent once they add an email (claimGuest)
+    // Swiping right applies. If HireMe can't yet (email not confirmed, or a detail missing), the swipe
+    // is kept and goes out as soon as it can (claimGuest, PUT /api/profile) — nothing to fill in here.
+    const out = { apply_url: role.apply_url, application: null, waiting: null };
+    if (liked && req.user.isGuest) out.waiting = 'email';
     else if (liked) {
-      const p = applier.profileFor(req.user.id);
-      const missing = applyReadiness(p);
-      if (p?.auto_apply && !missing.length) out.application = publicApplication(applier.enqueue(req.user.id, roleId));
-      else out.applySetup = { missing, consented: !!p?.auto_apply };
+      const missing = applyReadiness(applier.profileFor(req.user.id));
+      if (!missing.length) out.application = publicApplication(applier.enqueue(req.user.id, roleId));
+      else out.waiting = 'profile';
     }
     res.json(out);
   });
@@ -381,9 +394,7 @@ export function createApp(
     const roleId = int(req.body?.roleId);
     const role = db.prepare(`SELECT r.id FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.id = @id AND ${LIVE}`).get({ id: roleId, max: MAX_HEADCOUNT });
     if (!role) return res.status(404).json({ error: 'That role isn’t open anymore' });
-    if (req.body?.consent) db.prepare('UPDATE dev_profiles SET auto_apply = 1 WHERE user_id = ?').run(req.user.id);
     const p = applier.profileFor(req.user.id);
-    if (!p?.auto_apply) return res.status(400).json({ error: 'Turn on “Apply for me” first' });
     const missing = applyReadiness(p);
     if (missing.length) return res.status(400).json({ error: 'Finish your application details first', missing });
     db.prepare(

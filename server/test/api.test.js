@@ -97,7 +97,7 @@ test('sign-in: magic link, session, CSRF guard; every account is a developer', a
     assert.equal((await c.req(m, path, {})).status, 404, `${m} ${path}`);
 });
 
-test('swipe right applies: setup first, then HireMe queues the application', async () => {
+test('swipe right applies: nothing to fill in; swipes wait for missing details and go out once they’re added', async () => {
   const small = listedRole({ name: 'Tiny Rocket', headcount: 6 });
   const big = listedRole({ name: 'Too Big', headcount: 51 });
   const hidden = listedRole({ name: 'Hidden Co', status: 'pending' });
@@ -113,28 +113,29 @@ test('swipe right applies: setup first, then HireMe queues the application', asy
   for (const r of [big, hidden, noForm]) assert.ok(!ids.includes(r.rid), 'only open roles with a form at listed startups of 50 or fewer');
   assert.deepEqual(deck.find((c) => c.id === small.rid).sharedSkills, ['react', 'node.js']);
 
-  // Not set up to apply yet: the swipe is saved and HireMe asks for what's missing.
+  // Phone and work questions missing: the swipe is kept, nothing is asked.
   const first = (await dev.req('POST', `/deck/${small.rid}`, { liked: true })).body;
   assert.equal(first.application, null);
-  assert.deepEqual(first.applySetup, { missing: ['phone', 'work_authorized', 'needs_sponsorship', 'resume'], consented: false });
+  assert.equal(first.waiting, 'profile');
   assert.ok((await dev.req('GET', '/saved')).body.some((r) => r.id === small.rid));
 
-  await dev.req('PUT', '/profile', READY);
-  const app = await dev.req('POST', '/applications', { roleId: small.rid, consent: true });
-  assert.equal(app.status, 201);
-  assert.equal(app.body.state, 'queued');
+  // Filling them in sends the waiting swipe — no resume needed (HireMe builds one from the profile).
+  const saved = (await dev.req('PUT', '/profile', { ...READY, experience: '' })).body;
+  assert.deepEqual(saved.applyMissing, []);
+  assert.deepEqual(saved.sent, ['Tiny Rocket']);
   assert.ok(!(await dev.req('GET', '/saved')).body.some((r) => r.id === small.rid));
 
-  // Once set up, a right swipe applies straight away.
+  // From now on a right swipe applies straight away.
   const next = listedRole({ name: 'Bramble' });
   const r2 = (await dev.req('POST', `/deck/${next.rid}`, { liked: true })).body;
   assert.equal(r2.application.state, 'queued');
   const apps = (await dev.req('GET', '/applications')).body;
   assert.deepEqual(apps.map((a) => a.startup_name).sort(), ['Bramble', 'Tiny Rocket']);
 
-  // Undo before HireMe starts cancels the application; left swipes just skip.
+  // Undo before HireMe starts cancels it, and a later profile save doesn't resend it.
   assert.equal((await dev.req('DELETE', `/deck/${next.rid}`)).status, 204);
-  assert.ok(!(await dev.req('GET', '/applications')).body.some((a) => a.role_id === next.rid));
+  await dev.req('POST', `/deck/${next.rid}`, { liked: true });
+  assert.equal((await dev.req('GET', '/applications')).body.filter((a) => a.role_id === next.rid).length, 1);
   const left = listedRole();
   assert.equal((await dev.req('POST', `/deck/${left.rid}`, { liked: false })).body.application, null);
   assert.ok(!(await dev.req('GET', '/deck')).body.some((c) => c.id === left.rid));
@@ -174,14 +175,17 @@ test('guests: start without signing up, swipe, then add an email and the applica
   assert.equal(me.profileComplete, false);
 
   // Answers from the get-to-know-you steps, plus what forms need
-  await g.req('PUT', '/profile', { ...READY, links: { linkedin: 'linkedin.com/in/dana' }, auto_apply: true });
-  const swipe = (await g.req('POST', `/deck/${role.rid}`, { liked: true })).body;
-  assert.equal(swipe.needsAccount, true);
-  assert.equal(swipe.application, null, 'nothing is sent without a real email');
-  assert.equal((await g.req('POST', '/applications', { roleId: role.rid, consent: true })).status, 403);
-
-  // The sign-in link carries the guest, even if opened in another browser
+  await g.req('PUT', '/profile', { ...READY, links: { linkedin: 'linkedin.com/in/dana' } });
+  // Their email from the get-to-know-you steps: a confirmation link goes out, swiping carries on
   const start = await g.req('POST', '/auth/start', { email: 'Newbie@Example.com' });
+  assert.equal((await g.req('GET', '/me')).body.user.pendingEmail, 'newbie@example.com');
+  assert.ok(sent.some((m) => m.to === 'newbie@example.com' && /Confirm your email/.test(m.subject)));
+  const swipe = (await g.req('POST', `/deck/${role.rid}`, { liked: true })).body;
+  assert.equal(swipe.waiting, 'email');
+  assert.equal(swipe.application, null, 'nothing is sent before the email is confirmed');
+  assert.equal((await g.req('POST', '/applications', { roleId: role.rid })).status, 403);
+
+  // The link carries the guest, even if opened in another browser
   const token = start.body.devLink.split('/signin/')[1];
   const other = client();
   const v = await other.req('POST', '/auth/verify', { token });
@@ -198,7 +202,7 @@ test('guests who sign in to an existing account keep that account’s profile an
   const role = listedRole({ name: 'Merge Labs' });
   const old = client();
   await old.signIn('returning@example.com');
-  await old.req('PUT', '/profile', { ...READY, name: 'Real Name', auto_apply: true });
+  await old.req('PUT', '/profile', { ...READY, name: 'Real Name' });
 
   const g = client();
   await g.req('POST', '/auth/guest');
@@ -206,7 +210,7 @@ test('guests who sign in to an existing account keep that account’s profile an
   await g.req('POST', `/deck/${role.rid}`, { liked: true });
   const start = await g.req('POST', '/auth/start', { email: 'returning@example.com' });
   const v = await g.req('POST', '/auth/verify', { token: start.body.devLink.split('/signin/')[1] });
-  assert.deepEqual(v.body.sent, ['Merge Labs'], 'the account had already agreed to Apply for me');
+  assert.deepEqual(v.body.sent, ['Merge Labs'], 'the account already has what applications need');
   const me = (await g.req('GET', '/me')).body;
   assert.equal(me.profile.name, 'Real Name');
   assert.equal(db.prepare("SELECT COUNT(*) n FROM users WHERE is_guest = 1 AND id NOT IN (SELECT user_id FROM sessions)").get().n, 0, 'the guest account is gone');

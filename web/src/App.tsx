@@ -79,7 +79,7 @@ export default function App() {
   // Old links to #/matches go to Applications.
   const page = route.page === 'matches' ? 'applications' : tabs.includes(route.page) ? route.page : 'discover'
   // New people get to know HireMe a few taps at a time before anything else.
-  if (!me.profileComplete && page !== 'admin') return <Onboarding isGuest={user.isGuest} onDone={refresh} />
+  if (!me.profileComplete && page !== 'admin') return <Onboarding isGuest={user.isGuest} email={user.email} onDone={refresh} />
 
   return (
     <div className="shell">
@@ -128,9 +128,9 @@ export default function App() {
             Can’t reach HireMe right now. We’ll keep trying.
           </div>
         )}
-        {page === 'discover' && <Discover onChange={refresh} />}
+        {page === 'discover' && <Discover me={me} onChange={refresh} />}
         {page === 'applications' && <Applications onChange={refresh} />}
-        {page === 'profile' && <DevProfileView isGuest={user.isGuest} onSaved={refresh} />}
+        {page === 'profile' && <DevProfileView isGuest={user.isGuest} pendingEmail={user.pendingEmail} onSaved={refresh} />}
         {page === 'admin' && user.isAdmin && <AdminView onChange={refresh} />}
       </main>
     </div>

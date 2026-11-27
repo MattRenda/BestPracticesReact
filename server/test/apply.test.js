@@ -98,15 +98,15 @@ test('helpers: factual questions are never drafted; resume comes from the profil
   assert.match(md, /- Rebuilt legacy apps in React/);
 });
 
-test('a yes without application details asks for them instead of applying', async () => {
+test('a right swipe without application details waits instead of applying', async () => {
   const dev = client();
   await dev.signIn('early@example.com');
   await dev.req('PUT', '/profile', PROFILE);
   const r = (await dev.req('POST', `/deck/${roleId('main')}`, { liked: true })).body;
   assert.equal(r.application, null);
-  assert.deepEqual(r.applySetup.missing.sort(), ['needs_sponsorship', 'phone', 'work_authorized']);
-  assert.equal(r.applySetup.consented, false);
-  assert.equal((await dev.req('POST', '/applications', { roleId: roleId('main'), consent: true })).status, 400, 'still missing details');
+  assert.equal(r.waiting, 'profile');
+  assert.deepEqual((await dev.req('GET', '/profile')).body.applyMissing.sort(), ['needs_sponsorship', 'phone', 'work_authorized']);
+  assert.equal((await dev.req('POST', '/applications', { roleId: roleId('main') })).status, 400, 'still missing details');
 });
 
 test('HireMe fills, uploads, answers and submits the form for the developer', async (t) => {
@@ -119,11 +119,9 @@ test('HireMe fills, uploads, answers and submits the form for the developer', as
   assert.equal((await dev.req('POST', '/profile/resume', { name: 'Matt Renda Resume.pdf', data: pdf.toString('base64') })).status, 200);
   assert.equal((await dev.req('POST', '/profile/resume', { name: 'x.pdf', data: Buffer.from('not a pdf').toString('base64') })).status, 400);
 
-  // First yes: consent, then it queues
+  // Swiping right is the go-ahead: it queues straight away
   const swipe = (await dev.req('POST', `/deck/${roleId('main')}`, { liked: true })).body;
-  assert.deepEqual(swipe.applySetup.missing, []);
-  const queued = (await dev.req('POST', '/applications', { roleId: roleId('main'), consent: true })).body;
-  assert.equal(queued.state, 'queued');
+  assert.equal(swipe.application.state, 'queued');
   await applier.tick();
 
   const list = (await dev.req('GET', '/applications')).body;

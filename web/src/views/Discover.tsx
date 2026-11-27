@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { api, ApiError, salaryRange, WORK_LABEL } from '../api'
-import type { ApplyField, RoleCard } from '../types'
+import type { Me, RoleCard } from '../types'
 import { Deck } from '../components/Deck'
-import { ApplySetup } from '../components/ApplySetup'
-import { GuestApply } from '../components/GuestApply'
 import { Chips, ReportButton, Toast } from '../components/ui'
-import { ago, linkSentTo, useToast } from '../lib'
+import { ago, useToast } from '../lib'
 
 function paragraphs(text: string, max = 2400) {
   return text
@@ -15,16 +13,21 @@ function paragraphs(text: string, max = 2400) {
     .map((p, i) => <p key={i}>{p}</p>)
 }
 
-/** Swipe right and HireMe applies for you. Swipe left to skip. */
-export function Discover({ onChange }: { onChange: () => void }) {
+const FIELD_LABEL: Record<string, string> = { name: 'your full name', phone: 'your phone', work_authorized: 'US work authorization', needs_sponsorship: 'sponsorship' }
+
+/** Swipe right and HireMe applies for you. Swipe left to skip. Nothing to fill in here. */
+export function Discover({ me, onChange }: { me: Me; onChange: () => void }) {
   const [deck, setDeck] = useState<RoleCard[] | null>(null)
   const [needsProfile, setNeedsProfile] = useState(false)
-  const [setup, setSetup] = useState<{ roleId: number; startupName: string; applyUrl: string; missing: ApplyField[]; consented: boolean } | null>(null)
-  const [guestFor, setGuestFor] = useState<string | null>(null)
+  const [missing, setMissing] = useState<string[]>([])
+  const [waiting, setWaiting] = useState(0)
+  const [resent, setResent] = useState(false)
   const [toast, setToast] = useToast()
+  const pendingEmail = me.user?.pendingEmail ?? ''
 
   const load = useCallback(() => {
     api.roleDeck().then(setDeck, (e: ApiError) => (e.data?.needsProfile ? setNeedsProfile(true) : setToast(e.message)))
+    api.profile().then((p) => setMissing(p.applyMissing ?? []), () => {})
   }, [setToast])
   useEffect(load, [load])
 
@@ -32,13 +35,8 @@ export function Discover({ onChange }: { onChange: () => void }) {
     async (card: RoleCard, liked: boolean) => {
       try {
         const r = await api.swipeRole(card.id, liked)
-        if (liked && r.needsAccount) {
-          const sentTo = linkSentTo()
-          if (sentTo) setToast(`Saved. It goes out when you tap the link we sent to ${sentTo}`)
-          else setGuestFor(card.startup.name)
-        } else if (liked && r.application) setToast(`Applying to ${card.startup.name} for you`)
-        else if (liked && r.applySetup)
-          setSetup({ roleId: card.id, startupName: card.startup.name, applyUrl: r.apply_url, missing: r.applySetup.missing, consented: r.applySetup.consented })
+        if (r.application) setToast(`Applying to ${card.startup.name}`)
+        else if (r.waiting) setWaiting((n) => n + 1)
         onChange()
       } catch (e) {
         setToast((e as Error).message)
@@ -61,6 +59,34 @@ export function Discover({ onChange }: { onChange: () => void }) {
       </section>
     )
 
+  // A quiet note, never a form: why right swipes haven't gone out yet, if they haven't.
+  let note: ReactNode = null
+  if (me.user?.isGuest && pendingEmail)
+    note = (
+      <>
+        Tap the link we sent to <strong>{pendingEmail}</strong> and your applications go out.{' '}
+        {resent ? (
+          'Sent again.'
+        ) : (
+          <button type="button" className="link-btn" onClick={() => api.startSignIn(pendingEmail).then(() => setResent(true), (e: Error) => setToast(e.message))}>
+            Resend
+          </button>
+        )}
+      </>
+    )
+  else if (me.user?.isGuest)
+    note = (
+      <>
+        Add your email so HireMe can send your applications. <a href="#/profile">Add it</a>
+      </>
+    )
+  else if (missing.length)
+    note = (
+      <>
+        Add {missing.map((m) => FIELD_LABEL[m] ?? m).join(' and ')} and HireMe sends your right swipes. <a href="#/profile">Add {missing.length === 1 ? 'it' : 'them'}</a>
+      </>
+    )
+
   return (
     <section className="view swipe-view">
       <div className="status-strip">
@@ -69,6 +95,12 @@ export function Discover({ onChange }: { onChange: () => void }) {
         </span>
         <span className="muted">Swipe right and HireMe applies for you</span>
       </div>
+      {note && (
+        <p className={`swipe-note${waiting ? ' lit' : ''}`} role="status">
+          {waiting > 0 && <strong>{waiting} waiting. </strong>}
+          {note}
+        </p>
+      )}
       <Deck
         items={deck}
         onSwipe={onSwipe}
@@ -94,15 +126,6 @@ export function Discover({ onChange }: { onChange: () => void }) {
             </button>
           </>
         }
-      />
-      <GuestApply company={guestFor} onClose={() => setGuestFor(null)} />
-      <ApplySetup
-        target={setup}
-        onClose={() => setSetup(null)}
-        onQueued={(name) => {
-          setToast(`Applying to ${name} for you`)
-          onChange()
-        }}
       />
       <Toast msg={toast} />
     </section>
