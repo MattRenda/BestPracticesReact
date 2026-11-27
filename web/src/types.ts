@@ -1,4 +1,4 @@
-export type Role = '' | 'dev' | 'founder'
+export type Role = 'dev'
 export type WorkPref = 'remote' | 'hybrid' | 'onsite' | 'any'
 export type WorkMode = 'remote' | 'hybrid' | 'onsite'
 
@@ -26,7 +26,6 @@ export interface DevProfile {
   experience?: string
   links?: Links
   salary_min?: number | null
-  visible?: boolean
   complete?: boolean
   // Applying for you
   phone?: string
@@ -64,7 +63,8 @@ export interface Application {
   headcount?: number
 }
 
-export type StartupStatus = 'pending' | 'approved' | 'rejected' | 'listed' | 'retired'
+/** 'listed' is shown; 'pending' was hidden after reports; 'rejected' was removed by an admin. */
+export type StartupStatus = 'listed' | 'retired' | 'pending' | 'rejected' | 'approved'
 
 export interface Startup {
   id: number
@@ -76,13 +76,17 @@ export interface Startup {
   one_liner: string
   about: string
   location: string
-  status?: StartupStatus
-  review_note?: string
-  /** False for startups imported from YC's directory whose founders haven't joined. */
-  onHireMe?: boolean
 }
 
-export interface RoleListing {
+export interface Me {
+  user: User | null
+  counts?: { needsYou: number; openReports?: number }
+  profile?: DevProfile | null
+  profileComplete?: boolean
+}
+
+/** A job in the deck: an open engineering role at a startup with 50 or fewer people. */
+export interface RoleCard {
   id: number
   title: string
   description: string
@@ -92,61 +96,17 @@ export interface RoleListing {
   salary_max: number | null
   equity: string
   skills: string
-  status: 'open' | 'closed'
   created_at: string
-  interested?: number
-  matches?: number
-}
-
-export interface MyStartup extends Startup {
-  status: StartupStatus
-  flags: string
-  roles: RoleListing[]
-  team: { email: string; title: string }[]
-}
-
-export interface Me {
-  user: User | null
-  counts?: { unread: number; interested?: number; pendingStartups?: number; openReports?: number; needsYou?: number }
-  profile?: DevProfile | null
-  profileComplete?: boolean
-  startup?: Startup | null
-  joinable?: { id: number; name: string; status: StartupStatus; claimable: boolean } | null
-}
-
-/** A role card in a developer's deck. */
-export interface RoleCard extends Omit<RoleListing, 'interested' | 'matches'> {
-  interested: boolean
-  /** Set when the startup isn't on HireMe yet: apply on their own site. */
-  external: { apply_url: string } | null
   posted_at: string | null
+  apply_url: string
   sharedSkills: string[]
   startup: Startup
 }
 
-/** A developer card in a founder's deck. */
-export interface DevCard {
-  id: number
-  name: string
-  headline: string
-  location: string
-  work_pref: WorkPref
-  years: number | null
-  skills: string
-  bio: string
-  experience: string
-  links: Links
-  likedRole: boolean
-  note: string
-  sharedSkills: string[]
-}
-
 export interface SwipeResult {
-  matched: boolean
-  matchId: number | null
-  external?: { apply_url: string } | null
-  application?: Application | null
-  applySetup?: { missing: ApplyField[]; consented: boolean } | null
+  apply_url: string
+  application: Application | null
+  applySetup: { missing: ApplyField[]; consented: boolean } | null
 }
 
 export interface SavedRole {
@@ -173,60 +133,31 @@ export interface ImportRun {
   errors: string[]
 }
 
-export interface MatchSummary {
-  id: number
-  created_at: string
-  closed: boolean
-  role_title: string
-  startup_name: string
-  domain: string
-  dev_name: string | null
-  dev_headline: string | null
-  last_body: string | null
-  last_at: string | null
-  unread: number
-}
-
-export interface Message {
-  id: number
-  body: string
-  created_at: string
-  sender_id: number
-  mine: boolean
-  side: 'dev' | 'startup'
-}
-
-export interface MatchDetail {
-  id: number
-  created_at: string
-  closed: boolean
-  role: RoleListing
-  startup: Startup
-  dev: Omit<DevCard, 'likedRole' | 'note' | 'sharedSkills'> | null
-  messages: Message[]
-}
-
-export interface AdminStartup extends Startup {
-  status: StartupStatus
-  flags: string
-  members: string | null
-  reports: number
-  created_at: string
-}
-
 export interface Report {
   id: number
   reporter: string | null
-  target_type: 'startup' | 'dev'
   target_id: number
-  target_name: string | null
+  target_name: string
+  target_status: StartupStatus
+  domain: string
+  website: string
   reason: string
   detail: string
   created_at: string
 }
 
+export interface HiddenStartup {
+  id: number
+  name: string
+  domain: string
+  website: string
+  status: StartupStatus
+  flags: string
+  headcount: number
+}
+
 export interface AdminQueue {
-  startups: AdminStartup[]
   reports: Report[]
-  stats: { devs: number; founders: number; openRoles: number; matches: number; listed: number; importedRoles: number }
+  hidden: HiddenStartup[]
+  stats: { devs: number; openRoles: number; listed: number; submitted: number }
 }

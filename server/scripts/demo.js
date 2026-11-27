@@ -1,4 +1,5 @@
 // Fills a database with fictional startups, roles and developers so you can try HireMe locally.
+// The demo job links point at .example sites, so HireMe can't actually apply to them.
 // Usage: DB_PATH=./data/demo.db node scripts/demo.js   (never point this at your real database)
 // All companies use the reserved .example domain so they can't be mistaken for real ones.
 import { openDb } from '../src/db.js';
@@ -10,8 +11,8 @@ if (!file || !/demo/.test(file)) {
 }
 const db = openDb(file);
 
-const user = (email, role) => {
-  db.prepare('INSERT OR IGNORE INTO users (email, role) VALUES (?, ?)').run(email, role);
+const user = (email) => {
+  db.prepare("INSERT OR IGNORE INTO users (email, role) VALUES (?, 'dev')").run(email);
   return db.prepare('SELECT id FROM users WHERE email = ?').get(email).id;
 };
 
@@ -24,7 +25,6 @@ const STARTUPS = [
     location: 'Remote · US',
     one_liner: 'Scheduling and reminders for small clinics',
     about: 'Two founders who ran a physical therapy clinic and got tired of no-shows. 140 clinics pay for Tiny Rocket today.',
-    founder: 'ana@tinyrocket.example',
     roles: [
       {
         title: 'Founding Full-Stack Engineer',
@@ -48,7 +48,6 @@ const STARTUPS = [
     location: 'Sacramento, CA',
     one_liner: 'Weeding robots for organic farms',
     about: 'Our robots pull weeds so farms don’t spray. Running on 30 farms across the Central Valley.',
-    founder: 'kai@bramble.example',
     roles: [
       { title: 'Senior Frontend Engineer', skills: 'React, TypeScript, Mapbox, WebSockets', work_mode: 'hybrid', location: 'Sacramento, CA', salary_min: 160000, salary_max: 190000, equity: '0.2%', description: 'Build the fleet dashboard growers use to plan routes, watch robots live and see what got weeded.' },
     ],
@@ -61,7 +60,6 @@ const STARTUPS = [
     location: 'Remote',
     one_liner: 'Focus tools for people with noisy jobs',
     about: 'Three of us, one paying product, profitable since month four.',
-    founder: 'sam@quietlab.example',
     roles: [{ title: 'Product Engineer', skills: 'React, Node.js, Chrome extensions', work_mode: 'remote', location: 'Anywhere', salary_min: 120000, salary_max: 150000, equity: '1–2%', description: 'Build our Chrome extension and the web app behind it. You’ll talk to users as much as you code.' }],
   },
   {
@@ -72,7 +70,6 @@ const STARTUPS = [
     location: 'Remote · US',
     one_liner: 'Bookkeeping for landscapers and trades',
     about: 'Bookkeeping built for people who work outside. 4,000 small businesses use us.',
-    founder: 'lee@ledgerleaf.example',
     roles: [{ title: 'Backend Engineer, Payments', skills: 'Node.js, Express, Postgres, AWS', work_mode: 'remote', location: 'US', salary_min: 155000, salary_max: 185000, equity: '0.15%', description: 'Own the services that move money: invoices, card payments, and payouts.' }],
   },
 ];
@@ -85,38 +82,27 @@ const DEVS = [
 
 for (const s of STARTUPS) {
   db.prepare(
-    `INSERT OR IGNORE INTO startups (name, website, domain, headcount, stage, one_liner, about, location, status, reviewed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'approved', datetime('now'))`,
+    `INSERT OR IGNORE INTO startups (name, website, domain, headcount, stage, one_liner, about, location, status, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'listed', 'yc')`,
   ).run(s.name, `https://${s.domain}`, s.domain, s.headcount, s.stage, s.one_liner, s.about, s.location);
   const sid = db.prepare('SELECT id FROM startups WHERE domain = ?').get(s.domain).id;
-  const fid = user(s.founder, 'founder');
-  db.prepare('INSERT OR IGNORE INTO startup_members (startup_id, user_id, title) VALUES (?, ?, ?)').run(sid, fid, 'Co-founder');
   if (!db.prepare('SELECT 1 FROM roles WHERE startup_id = ?').get(sid))
-    for (const r of s.roles)
-      db.prepare('INSERT INTO roles (startup_id, title, description, location, work_mode, salary_min, salary_max, equity, skills) VALUES (?,?,?,?,?,?,?,?,?)').run(
-        sid, r.title, r.description, r.location, r.work_mode, r.salary_min, r.salary_max, r.equity, r.skills,
-      );
+    s.roles.forEach((r, i) =>
+      db
+        .prepare(
+          `INSERT INTO roles (startup_id, title, description, location, work_mode, salary_min, salary_max, equity, skills, source, external_id, apply_url)
+           VALUES (?,?,?,?,?,?,?,?,?,'ats',?,?)`,
+        )
+        .run(sid, r.title, r.description, r.location, r.work_mode, r.salary_min, r.salary_max, r.equity, r.skills, `demo:${sid}:${i}`, `https://${s.domain}/jobs/${i + 1}`),
+    );
 }
 
 for (const d of DEVS) {
-  const id = user(d.email, 'dev');
+  const id = user(d.email);
   db.prepare(
     `INSERT OR IGNORE INTO dev_profiles (user_id, name, headline, location, years, skills, bio, work_pref, links)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')`,
   ).run(id, d.name, d.headline, d.location, d.years, d.skills, d.bio, d.work_pref);
 }
 
-// Tiny Rocket already likes Sam for the founding role, and Jo already likes it — so both sides have something waiting.
-const role = db.prepare("SELECT r.id FROM roles r JOIN startups s ON s.id = r.startup_id WHERE s.domain = 'tinyrocket.example' ORDER BY r.id LIMIT 1").get().id;
-const jo = db.prepare("SELECT id FROM users WHERE email = 'jo@dev.example'").get().id;
-db.prepare('INSERT OR IGNORE INTO dev_swipes (dev_id, role_id, liked, note) VALUES (?, ?, 1, ?)').run(jo, role, 'I rebuilt the booking flow at my last job — would love to do it right this time.');
-const sam = db.prepare("SELECT id FROM users WHERE email = 'sam@dev.example'").get().id;
-db.prepare('INSERT OR IGNORE INTO founder_swipes (role_id, dev_id, liked) VALUES (?, ?, 1)').run(role, sam);
-
-// One pending startup for the admin queue.
-db.prepare(
-  `INSERT OR IGNORE INTO startups (name, website, domain, headcount, stage, one_liner, location, flags, status)
-   VALUES ('Northpine', 'https://northpine.example', 'northpine.example', 42, 'Series B', 'Inventory software for hardware stores', 'Denver, CO', 'Close to the limit (42 people)', 'pending')`,
-).run();
-
-console.log(`Demo data ready in ${file}. Sign in as a founder with ana@tinyrocket.example, or as any email for a developer account.`);
+console.log(`Demo data ready in ${file}. Sign in with jo@dev.example (profile already filled in) or any email for a new account.`);

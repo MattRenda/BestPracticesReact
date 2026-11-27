@@ -1,20 +1,4 @@
-import type {
-  AdminQueue,
-  Application,
-  DevCard,
-  DevProfile,
-  MatchDetail,
-  MatchSummary,
-  Me,
-  ImportRun,
-  MyStartup,
-  SavedRole,
-  RoleCard,
-  RoleListing,
-  Startup,
-  StartupStatus,
-  SwipeResult,
-} from './types'
+import type { AdminQueue, Application, DevProfile, ImportRun, Me, RoleCard, SavedRole, Startup, SwipeResult } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -48,11 +32,10 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   me: () => call<Me>('GET', '/me'),
   config: () => call<{ googleClientId: string | null }>('GET', '/config'),
-  googleSignIn: (credential: string, intent: 'dev' | 'founder') => call<{ ok: boolean }>('POST', '/auth/google', { credential, intent }),
-  startSignIn: (email: string, intent: 'dev' | 'founder') => call<{ sent: boolean; devLink?: string }>('POST', '/auth/start', { email, intent }),
+  googleSignIn: (credential: string) => call<{ ok: boolean }>('POST', '/auth/google', { credential }),
+  startSignIn: (email: string) => call<{ sent: boolean; devLink?: string }>('POST', '/auth/start', { email }),
   verify: (token: string) => call<{ ok: boolean }>('POST', '/auth/verify', { token }),
   logout: () => call<void>('POST', '/auth/logout'),
-  setRole: (role: 'dev' | 'founder') => call<{ role: string }>('POST', '/me/role', { role }),
   deleteAccount: () => call<void>('DELETE', '/me'),
 
   profile: () => call<DevProfile>('GET', '/profile'),
@@ -67,31 +50,15 @@ export const api = {
   selfApplied: (id: number) => call<void>('POST', `/applications/${id}/self`),
   cancelApplication: (id: number) => call<void>('DELETE', `/applications/${id}`),
 
-  startup: () => call<MyStartup | null>('GET', '/startup'),
-  createStartup: (s: Partial<Startup> & { confirmNotAgency: boolean; title?: string }) => call<Startup>('POST', '/startup', s),
-  joinStartup: (id: number, title: string) => call<Startup>('POST', '/startup/join', { id, title }),
-  saveStartup: (s: Partial<Startup>) => call<Startup>('PUT', '/startup', s),
-  createRole: (r: Partial<RoleListing>) => call<RoleListing>('POST', '/roles', r),
-  saveRole: (id: number, r: Partial<RoleListing>) => call<RoleListing>('PUT', `/roles/${id}`, r),
-
   roleDeck: () => call<RoleCard[]>('GET', '/deck'),
-  swipeRole: (roleId: number, liked: boolean, note = '') => call<SwipeResult>('POST', `/deck/${roleId}`, { liked, note }),
+  swipeRole: (roleId: number, liked: boolean) => call<SwipeResult>('POST', `/deck/${roleId}`, { liked }),
   undoRole: (roleId: number) => call<void>('DELETE', `/deck/${roleId}`),
   saved: () => call<SavedRole[]>('GET', '/saved'),
-  devDeck: (roleId: number) => call<DevCard[]>('GET', `/deck/devs?role=${roleId}`),
-  swipeDev: (roleId: number, devId: number, liked: boolean) => call<SwipeResult>('POST', `/deck/devs/${devId}`, { role: roleId, liked }),
-  undoDev: (roleId: number, devId: number) => call<void>('DELETE', `/deck/devs/${devId}?role=${roleId}`),
 
-  matches: () => call<MatchSummary[]>('GET', '/matches'),
-  match: (id: number, after = 0) => call<MatchDetail>('GET', `/matches/${id}${after ? `?after=${after}` : ''}`),
-  send: (id: number, body: string) => call<{ id: number }>('POST', `/matches/${id}/messages`, { body }),
-  markRead: (id: number, lastId: number) => call<void>('POST', `/matches/${id}/read`, { lastId }),
-  closeMatch: (id: number) => call<void>('POST', `/matches/${id}/close`),
-
-  report: (type: 'startup' | 'dev', id: number, reason: string, detail = '') => call<{ ok: boolean }>('POST', '/reports', { type, id, reason, detail }),
+  report: (id: number, reason: string, detail = '') => call<{ ok: boolean }>('POST', '/reports', { type: 'startup', id, reason, detail }),
 
   adminQueue: () => call<AdminQueue>('GET', '/admin/queue'),
-  review: (id: number, status: StartupStatus, note = '') => call<Startup>('POST', `/admin/startups/${id}`, { status, note }),
+  setListed: (id: number, listed: boolean) => call<Startup>('POST', `/admin/startups/${id}`, { status: listed ? 'listed' : 'rejected' }),
   resolveReport: (id: number) => call<void>('POST', `/admin/reports/${id}/resolve`),
   importStatus: () => call<{ running: boolean; runs: ImportRun[] }>('GET', '/admin/import'),
   applierStatus: () =>

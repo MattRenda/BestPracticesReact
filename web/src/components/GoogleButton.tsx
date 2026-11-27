@@ -29,14 +29,14 @@ function loadGis() {
 }
 
 /** "Sign in with Google". Shows nothing until the server has a Google client ID configured. */
-export function GoogleButton({ intent, onError }: { intent: 'dev' | 'founder'; onError: (msg: string) => void }) {
+export function GoogleButton({ onError }: { onError: (msg: string) => void }) {
   const box = useRef<HTMLDivElement>(null)
-  const latest = useRef({ intent, onError })
+  const latest = useRef({ onError })
   const [clientId, setClientId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    latest.current = { intent, onError }
+    latest.current = { onError }
   })
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export function GoogleButton({ intent, onError }: { intent: 'dev' | 'founder'; o
           callback: async ({ credential }) => {
             setBusy(true)
             try {
-              await api.googleSignIn(credential, latest.current.intent)
+              await api.googleSignIn(credential)
               location.hash = '#/discover'
               location.reload()
             } catch (e) {

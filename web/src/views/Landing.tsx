@@ -3,7 +3,6 @@ import { api } from '../api'
 import { GoogleButton } from '../components/GoogleButton'
 
 export function Landing() {
-  const [intent, setIntent] = useState<'dev' | 'founder'>('dev')
   const [email, setEmail] = useState('')
   const [state, setState] = useState<{ kind: 'idle' | 'sending' | 'sent' | 'error'; msg?: string; devLink?: string }>({ kind: 'idle' })
 
@@ -11,7 +10,7 @@ export function Landing() {
     e.preventDefault()
     setState({ kind: 'sending' })
     try {
-      const r = await api.startSignIn(email.trim(), intent)
+      const r = await api.startSignIn(email.trim())
       setState({ kind: 'sent', devLink: r.devLink })
     } catch (err) {
       setState({ kind: 'error', msg: (err as Error).message })
@@ -29,24 +28,24 @@ export function Landing() {
 
       <section className="hero">
         <div className="hero-copy">
-          <p className="kicker">Startups with 50 people or fewer</p>
+          <p className="kicker">For developers · startups with 50 people or fewer</p>
           <h1>
-            Founders and developers,
+            Swipe right.
             <br />
-            <em>no one in between.</em>
+            <em>We apply for you.</em>
           </h1>
           <p className="lede">
-            Swipe on startups that are actually hiring. Founders swipe on you. When you both say yes, you’re talking to the person who decides, not a recruiter.
+            Engineering jobs at small startups, one card at a time. Swipe right and HireMe fills out the application from your profile and sends it. Free.
           </p>
           <ul className="promises">
             <li>
-              <strong>No recruiters.</strong> Staffing agencies can’t sign up, and reports take listings down fast.
+              <strong>Startups only.</strong> Every company has 50 people or fewer. No big companies, ever.
             </li>
             <li>
-              <strong>No big companies.</strong> Every startup is verified with a company email and has 50 people or fewer.
+              <strong>No recruiters.</strong> Roles come straight from startups’ own job boards, and staffing agencies are filtered out.
             </li>
             <li>
-              <strong>No cold applications.</strong> Chat opens only when both sides are interested.
+              <strong>You stay in charge.</strong> HireMe asks you about anything it can’t answer truthfully, like visas or salary, and shows you exactly what it sent.
             </li>
           </ul>
           <p className="legal-links">
@@ -72,28 +71,18 @@ export function Landing() {
             </div>
           ) : (
             <>
-              <div className="segmented" role="radiogroup" aria-label="I am a">
-                <button type="button" role="radio" aria-checked={intent === 'dev'} onClick={() => setIntent('dev')}>
-                  I’m a developer
-                </button>
-                <button type="button" role="radio" aria-checked={intent === 'founder'} onClick={() => setIntent('founder')}>
-                  I’m hiring at a startup
-                </button>
-              </div>
+              <h2 className="signin-title">Start swiping</h2>
               <label className="field">
-                <span>{intent === 'founder' ? 'Work email on your startup’s domain' : 'Email'}</span>
+                <span>Email</span>
                 <input
                   type="email"
                   required
                   autoComplete="email"
-                  placeholder={intent === 'founder' ? 'you@yourstartup.com' : 'you@example.com'}
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </label>
-              {intent === 'founder' && (
-                <p className="hint">We use your email domain to verify the company, so use your work email or work Google account. Personal Gmail won’t work.</p>
-              )}
               {state.kind === 'error' && (
                 <p className="error" role="alert">
                   {state.msg}
@@ -102,8 +91,8 @@ export function Landing() {
               <button className="btn primary wide" disabled={state.kind === 'sending' || !email.trim()}>
                 {state.kind === 'sending' ? 'Sending…' : 'Email me a sign-in link'}
               </button>
-              <GoogleButton intent={intent} onError={(msg) => setState({ kind: 'error', msg })} />
-              <p className="fine">No passwords. Free for developers and startups.</p>
+              <GoogleButton onError={(msg) => setState({ kind: 'error', msg })} />
+              <p className="fine">No passwords. Free.</p>
             </>
           )}
         </form>

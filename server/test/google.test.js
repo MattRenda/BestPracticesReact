@@ -86,10 +86,8 @@ test('tokens that are forged, for another app, expired or unverified are refused
   }
 });
 
-test('founders need a work Google account, same rule as email sign-in', async () => {
-  assert.equal((await google(idToken({ email: 'founder@gmail.com' }), 'founder')).status, 400);
+test('any Google account signs in as a developer (there are no founder accounts)', async () => {
   const r = await google(idToken({ email: 'ana@tinyrocket.example', hd: 'tinyrocket.example' }), 'founder');
   assert.equal(r.status, 200);
-  assert.equal(r.me.user.role, 'founder');
-  assert.equal(r.me.joinable, null);
+  assert.equal(r.me.user.role, 'dev');
 });

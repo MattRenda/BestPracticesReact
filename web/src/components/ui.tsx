@@ -46,12 +46,12 @@ export function Chips({ list, highlight = [] }: { list: string; highlight?: stri
 const REASONS: [string, string][] = [
   ['recruiter', 'It’s a recruiter or staffing agency'],
   ['too_big', 'The company has more than 50 people'],
+  ['closed', 'The job isn’t open anymore'],
   ['spam', 'Spam or a fake listing'],
-  ['inappropriate', 'Inappropriate or abusive'],
   ['other', 'Something else'],
 ]
 
-export function ReportButton({ type, id, name, onDone }: { type: 'startup' | 'dev'; id: number; name: string; onDone?: () => void }) {
+export function ReportButton({ id, name, onDone }: { id: number; name: string; onDone?: () => void }) {
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
   const [detail, setDetail] = useState('')
@@ -60,7 +60,7 @@ export function ReportButton({ type, id, name, onDone }: { type: 'startup' | 'de
   async function send() {
     setState('sending')
     try {
-      await api.report(type, id, reason, detail)
+      await api.report(id, reason, detail)
       setState('done')
       onDone?.()
     } catch (e) {
@@ -84,7 +84,7 @@ export function ReportButton({ type, id, name, onDone }: { type: 'startup' | 'de
           {state === 'done' ? (
             <>
               <h2>Thanks — we’ll take a look</h2>
-              <p className="sheet-sub">{type === 'startup' ? `You won’t see ${name} in your deck anymore.` : 'You won’t see them in your deck again.'}</p>
+              <p className="sheet-sub">You won’t see {name} in your deck anymore.</p>
               <div className="sheet-actions">
                 <button type="button" className="btn primary" onClick={() => setOpen(false)}>
                   Done
@@ -96,7 +96,7 @@ export function ReportButton({ type, id, name, onDone }: { type: 'startup' | 'de
               <h2>Report {name}</h2>
               <p className="sheet-sub">HireMe is only for startups with 50 or fewer people hiring for themselves.</p>
               <fieldset className="field radios">
-                {REASONS.filter(([k]) => type === 'startup' || !['recruiter', 'too_big'].includes(k)).map(([k, label]) => (
+                {REASONS.map(([k, label]) => (
                   <label key={k}>
                     <input type="radio" name="reason" value={k} checked={reason === k} onChange={() => setReason(k)} />
                     {label}

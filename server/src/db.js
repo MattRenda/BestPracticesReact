@@ -15,7 +15,7 @@ export function openDb(file = DB_PATH) {
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-      role TEXT NOT NULL DEFAULT '',           -- '' (not chosen yet) | dev | founder
+      role TEXT NOT NULL DEFAULT '',           -- dev (founder accounts were retired; see the end of openDb)
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_seen_at TEXT
     );
@@ -100,6 +100,7 @@ export function openDb(file = DB_PATH) {
     );
 
     -- A startup's swipe on a developer, for one of its roles.
+    -- Founder swipes, matches and messages are from the earlier two-sided version; nothing writes them now.
     CREATE TABLE IF NOT EXISTS founder_swipes (
       role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
       dev_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -163,7 +164,8 @@ export function openDb(file = DB_PATH) {
     const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
     for (const [name, def] of cols) if (!have.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${def}`);
   };
-  // startups.source: 'signup' (a founder added it) | 'yc' (imported). status adds 'listed' (imported, unclaimed) and 'retired'.
+  // startups.source: 'signup' (added by a founder, from before HireMe was developer-only) | 'yc' (imported).
+  // status: 'listed' (shown) | 'retired' (no longer hiring or over 50) | 'pending' (hidden after reports) | 'rejected' (removed by an admin).
   addColumns('startups', [
     ['source', "TEXT NOT NULL DEFAULT 'signup'"],
     ['yc_slug', 'TEXT'],
@@ -171,7 +173,7 @@ export function openDb(file = DB_PATH) {
     ['ats_slug', 'TEXT'],
     ['ats_checked_at', 'TEXT'],
   ]);
-  // roles.source: 'manual' (a founder wrote it) | 'ats' (imported from the startup's job board).
+  // roles.source: 'manual' (old founder-written roles; not shown) | 'ats' (imported from the startup's job board).
   addColumns('roles', [
     ['source', "TEXT NOT NULL DEFAULT 'manual'"],
     ['external_id', 'TEXT'],
@@ -211,6 +213,9 @@ export function openDb(file = DB_PATH) {
     CREATE INDEX IF NOT EXISTS roles_open ON roles (status, startup_id);
     CREATE INDEX IF NOT EXISTS startups_status ON startups (status);
   `);
+  // HireMe is for developers only now: founder accounts (and accounts that never picked) become developers.
+  db.exec("UPDATE users SET role = 'dev' WHERE role != 'dev'");
+
   return db;
 }
 

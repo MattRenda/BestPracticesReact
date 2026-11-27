@@ -1,7 +1,7 @@
 // Passwordless sign-in: we email a one-time link, and opening it starts a 30-day session.
-// Signing in proves the person controls that inbox, which is what founder verification relies on.
+// Signing in proves the person controls that inbox. No passwords.
 import { createHash, randomBytes } from 'node:crypto';
-import { isEmail, isFreeMail } from './rules.js';
+import { isEmail } from './rules.js';
 import { createGoogleVerifier } from './google.js';
 
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
@@ -45,11 +45,10 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
     );
   }
 
-  /** Creates the account if needed, applies a first-time role choice, and starts a session. */
-  function signIn(req, res, email, intent) {
-    db.prepare('INSERT OR IGNORE INTO users (email) VALUES (?)').run(email);
+  /** Creates the account if needed (every account is a developer account) and starts a session. */
+  function signIn(req, res, email) {
+    db.prepare("INSERT OR IGNORE INTO users (email, role) VALUES (?, 'dev')").run(email);
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user.role && intent) db.prepare('UPDATE users SET role = ? WHERE id = ?').run(intent, user.id);
     setSession(req, res, user.id);
     return user;
   }
@@ -88,7 +87,7 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
   const requireUser = (req, res, next) => (req.user ? next() : res.status(401).json({ error: 'Sign in first' }));
   const requireRole = (role) => (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Sign in first' });
-    if (req.user.role !== role) return res.status(403).json({ error: role === 'dev' ? 'This is for developer accounts' : 'This is for founder accounts' });
+    if (req.user.role !== role) return res.status(403).json({ error: 'This is for developer accounts' });
     next();
   };
   const requireAdmin = (req, res, next) => (req.user?.isAdmin ? next() : res.status(403).json({ error: 'Admins only' }));
@@ -96,17 +95,14 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
   function routes(app) {
     app.post('/api/auth/start', async (req, res) => {
       const email = String(req.body?.email || '').trim().toLowerCase();
-      const intent = ['dev', 'founder'].includes(req.body?.intent) ? req.body.intent : '';
       if (!isEmail(email)) return res.status(400).json({ error: 'Enter a valid email address' });
-      if (intent === 'founder' && isFreeMail(email))
-        return res.status(400).json({ error: 'Founders sign in with their work email on the startup’s domain, so we can verify the company.' });
       if (limited(`ip:${req.ip}`, ipLimit, 15 * 60_000) || limited(`email:${email}`, 4, 15 * 60_000))
         return res.status(429).json({ error: 'Too many sign-in emails. Wait a few minutes and try again.' });
       if (!mailer.configured && production) return res.status(503).json({ error: 'Email isn’t set up on this server yet (SMTP_URL).' });
 
       const token = randomBytes(32).toString('base64url');
       db.prepare("DELETE FROM login_tokens WHERE expires_at < datetime('now')").run();
-      db.prepare(`INSERT INTO login_tokens (hash, email, intent, expires_at) VALUES (?, ?, ?, datetime('now', '+${LINK_MINUTES} minutes'))`).run(sha(token), email, intent);
+      db.prepare(`INSERT INTO login_tokens (hash, email, intent, expires_at) VALUES (?, ?, '', datetime('now', '+${LINK_MINUTES} minutes'))`).run(sha(token), email);
       const link = `${baseUrl(req)}/#/signin/${token}`;
       try {
         await mailer.send({
@@ -126,14 +122,12 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
       const row = db.prepare("SELECT * FROM login_tokens WHERE hash = ? AND expires_at > datetime('now')").get(sha(token));
       if (!row) return res.status(400).json({ error: 'That sign-in link has expired or was already used. Request a new one.' });
       db.prepare('DELETE FROM login_tokens WHERE hash = ?').run(row.hash);
-      // A founder intent with a personal email was refused at /start, so this is safe.
-      signIn(req, res, row.email, row.intent);
+      signIn(req, res, row.email);
       res.json({ ok: true });
     });
 
     // "Sign in with Google": the browser sends Google's signed ID token; Google has verified the email.
     app.post('/api/auth/google', async (req, res) => {
-      const intent = ['dev', 'founder'].includes(req.body?.intent) ? req.body.intent : '';
       if (limited(`gip:${req.ip}`, 30, 15 * 60_000)) return res.status(429).json({ error: 'Too many sign-in attempts. Wait a few minutes.' });
       let g;
       try {
@@ -141,10 +135,7 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
       } catch (e) {
         return res.status(400).json({ error: e.message });
       }
-      const existing = db.prepare('SELECT role FROM users WHERE email = ?').get(g.email);
-      if (intent === 'founder' && !existing?.role && isFreeMail(g.email))
-        return res.status(400).json({ error: 'Founders sign in with their work Google account on the startup’s domain, so we can verify the company.' });
-      signIn(req, res, g.email, intent);
+      signIn(req, res, g.email);
       res.json({ ok: true });
     });
 

@@ -24,7 +24,7 @@ export function Privacy() {
   return (
     <Shell title="Privacy policy">
       <p>
-        HireMe connects developers with startups that have 50 or fewer people. It’s run by Matthew Renda. Questions or requests: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
+        HireMe helps developers apply to engineering jobs at startups with 50 or fewer people. It’s run by Matthew Renda. Questions or requests: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
       </p>
 
       <h2>What we collect</h2>
@@ -38,10 +38,7 @@ export function Privacy() {
           authorization, sponsorship needs, a resume PDF, and answers you save for application questions.
         </li>
         <li>
-          <strong>Startup profiles:</strong> company details, roles, team members’ emails.
-        </li>
-        <li>
-          <strong>Activity:</strong> your swipes, matches, messages, reports, and applications HireMe sends for you, including a screenshot of each application form.
+          <strong>Activity:</strong> your swipes, reports, and the applications HireMe sends for you, including a screenshot of each application form.
         </li>
         <li>
           <strong>Technical:</strong> a sign-in cookie and the time you were last active. We use your IP address briefly to limit abuse; we don’t store it.
@@ -50,14 +47,13 @@ export function Privacy() {
 
       <h2>How it’s used and who sees it</h2>
       <ul>
-        <li>Verified startups can see developer profiles (not your email or phone). You can hide your profile any time.</li>
-        <li>Developers see startup profiles and roles. Messages are only visible to the people in that match.</li>
+        <li>Your profile isn’t public and isn’t shown to companies on HireMe. Companies only receive what HireMe sends in an application you asked for.</li>
         <li>
-          <strong>Applying for you:</strong> if you turn on “Apply for me,” then when you say yes to a startup that isn’t on HireMe, we send your name, email, phone, links,
-          location, work authorization answers, resume, a cover note, and answers to the form’s questions to that company’s job application. We only do this for roles you
-          say yes to.
+          <strong>Applying for you:</strong> if you turn on “Apply for me,” then when you swipe right on a role, we send your name, email, phone, links, location, work
+          authorization answers, resume, a cover note, and answers to the form’s questions to that company’s job application. We only do this for roles you swipe right
+          on.
         </li>
-        <li>We email you sign-in links and updates about matches, messages and applications.</li>
+        <li>We email you sign-in links and updates about your applications.</li>
         <li>We don’t sell your information or use it for advertising.</li>
       </ul>
 
@@ -74,8 +70,7 @@ export function Privacy() {
 
       <h2>Keeping and deleting your data</h2>
       <p>
-        We keep your data while you have an account. Deleting your account (from your Profile or Startup page) removes your profile, resume, swipes, matches, messages,
-        applications and screenshots. Applications already sent to companies are held by those companies under their own policies. To ask what we have about you, or to
+        We keep your data while you have an account. Deleting your account (from your Profile page) removes your profile, resume, swipes, applications and screenshots. Applications already sent to companies are held by those companies under their own policies. To ask what we have about you, or to
         correct or delete it, email <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
       </p>
 
@@ -94,8 +89,8 @@ export function Terms() {
 
       <h2>Who can use HireMe</h2>
       <ul>
-        <li>Developers looking for work, and people hiring for their own startup with 50 or fewer people.</li>
-        <li>Recruiters, staffing agencies and outsourcing firms can’t list roles. We may remove startups that don’t meet these rules.</li>
+        <li>Developers looking for work.</li>
+        <li>Listings are only from startups with 50 or fewer people hiring for themselves. We remove recruiters, staffing agencies and companies that don’t meet this.</li>
         <li>You need to be at least 18.</li>
       </ul>
 
@@ -103,20 +98,18 @@ export function Terms() {
       <ul>
         <li>Keep your information accurate. You’re responsible for what you post and send.</li>
         <li>Don’t spam, harass, scrape, impersonate anyone, or misuse other people’s information.</li>
-        <li>Founders: only post real roles you’re hiring for, and keep candidates’ information confidential.</li>
       </ul>
 
       <h2>Applying for you</h2>
       <p>
-        If you turn on “Apply for me,” you authorize HireMe to submit applications in your name, using your profile and saved answers, to roles you say yes to at startups
-        that aren’t on HireMe, including accepting those forms’ standard privacy acknowledgments. Review your profile so what’s sent is accurate. HireMe asks you directly
+        If you turn on “Apply for me,” you authorize HireMe to submit applications in your name, using your profile and saved answers, to roles you swipe right on, including accepting those forms’ standard privacy acknowledgments. Review your profile so what’s sent is accurate. HireMe asks you directly
         about work authorization, sponsorship, salary and similar questions rather than guessing. You can turn this off at any time.
       </p>
 
       <h2>Listings and outcomes</h2>
       <p>
-        Some listings are imported from startups’ public job boards and may be out of date. HireMe doesn’t guarantee interviews, offers, or that any application or message
-        is received or answered. HireMe isn’t a party to any hiring decision or employment relationship.
+        Listings come from startups’ public job boards and may be out of date. HireMe doesn’t guarantee interviews, offers, or that any application is received or
+        answered. HireMe isn’t a party to any hiring decision or employment relationship.
       </p>
 
       <h2>The service</h2>

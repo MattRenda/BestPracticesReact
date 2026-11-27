@@ -5,7 +5,7 @@
 // own public job-board API (Ashby, Greenhouse, Lever) — those APIs exist so postings can be shown elsewhere.
 // We never scrape ycombinator.com: its terms of use forbid that.
 //
-// Imported startups have status 'listed' until a founder with a matching work email claims them.
+// Imported startups are 'listed' while they're hiring and have 50 or fewer people; then 'retired'.
 import { MAX_HEADCOUNT } from './db.js';
 import { looksLikeAgency, siteDomain } from './rules.js';
 
@@ -217,7 +217,7 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
     const domain = siteDomain(c.website || '');
     if (!domain) return;
     let s = db.prepare('SELECT * FROM startups WHERE domain = ?').get(domain);
-    if (s && s.source !== 'yc') return; // a founder added this startup themselves; leave it alone
+    if (s && s.source !== 'yc') return; // added by a founder in the earlier two-sided version; leave it alone
     if (s?.status === 'rejected') return;
 
     const tooBig = !c.team_size || c.team_size > MAX_HEADCOUNT;
@@ -243,7 +243,7 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
       s = db.prepare('SELECT * FROM startups WHERE id = ?').get(id);
       stats.startups_added++;
     } else if (s.status === 'listed') {
-      // Unclaimed: keep it in sync with YC. Claimed startups own their own profile.
+      // Keep it in sync with YC.
       const { domain: _d, yc_slug: _y, ...update } = fields;
       db.prepare('UPDATE startups SET name=@name, website=@website, headcount=@headcount, stage=@stage, one_liner=@one_liner, about=@about, location=@location WHERE id=@id').run({ ...update, id: s.id });
       if (tooBig) {
@@ -345,7 +345,7 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
         }
       };
       await Promise.all(Array.from({ length: concurrency }, worker));
-      // Unclaimed startups that dropped off the hiring list: close their imported roles
+      // Startups that dropped off the hiring list: close their imported roles
       const hiring = new Set(companies.map((c) => siteDomain(c.website || '')).filter(Boolean));
       if (!limit)
         for (const s of db.prepare("SELECT id, domain FROM startups WHERE source = 'yc' AND status = 'listed'").all())

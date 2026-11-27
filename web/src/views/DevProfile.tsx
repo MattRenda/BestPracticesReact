@@ -91,7 +91,7 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
       <section className="view narrow">
         <header className="view-head">
           <h1>Set up your profile</h1>
-          <p className="lede">Founders see this when you say yes to their role. Start from your resume, or fill it out yourself.</p>
+          <p className="lede">HireMe fills out every application from this. Start from your resume, or fill it out yourself.</p>
         </header>
         <div className="start-choices">
           <label className={`choice upload-choice${reading ? ' busy' : ''}`}>
@@ -124,8 +124,8 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
         <h1>{onboarding ? 'Set up your profile' : 'Your profile'}</h1>
         <p className="lede">
           {onboarding
-            ? 'This is what founders see when you say yes to their role. Your email stays private until you choose to share it.'
-            : 'Founders see this when you say yes to their role, and when they’re looking for developers.'}
+            ? 'HireMe fills out every application from this, so the more you add, the better your applications.'
+            : 'HireMe fills out every application from this. It also decides which roles show up first.'}
         </p>
         <div className="head-actions">
           <label className="btn ghost small import">
@@ -227,18 +227,12 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
           </label>
         </fieldset>
 
-        <fieldset className="group">
-          <legend>Visibility</legend>
-          <label className="toggle">
-            <input type="checkbox" checked={p.visible !== false} onChange={(e) => update({ visible: e.target.checked })} />
-            <span className="toggle-track" aria-hidden="true" />
-            <span className="toggle-text">
-              <span>Founders can find me</span>
-              <small>Turn off to pause. Startups you already said yes to can still see you.</small>
-            </span>
-          </label>
-          {!onboarding && <DeleteAccount />}
-        </fieldset>
+        {!onboarding && (
+          <fieldset className="group">
+            <legend>Account</legend>
+            <DeleteAccount />
+          </fieldset>
+        )}
 
         <div className="sticky-save">
           <span className="status-msg">{dirty ? 'Unsaved changes' : ''}</span>
@@ -293,7 +287,7 @@ export function DeleteAccount() {
       type="button"
       className="link-btn danger"
       onClick={async () => {
-        if (!confirm('Delete your HireMe account, profile, matches and messages? This can’t be undone.')) return
+        if (!confirm('Delete your HireMe account, profile, resume and application history? This can’t be undone.')) return
         await api.deleteAccount()
         location.hash = ''
         location.reload()
@@ -350,7 +344,7 @@ function ApplyingSection({
   return (
     <fieldset className="group">
       <legend>Applying for you</legend>
-      <p className="group-note">For startups that aren’t on HireMe yet, HireMe can fill out and submit their application when you say yes.</p>
+      <p className="group-note">When you swipe right, HireMe fills out and submits the startup’s application with these.</p>
       <label className="toggle">
         <input type="checkbox" checked={!!p.auto_apply} onChange={(e) => update({ auto_apply: e.target.checked })} />
         <span className="toggle-track" aria-hidden="true" />

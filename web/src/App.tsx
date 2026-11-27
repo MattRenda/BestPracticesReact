@@ -2,15 +2,13 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { api } from './api'
 import type { Me } from './types'
 import { Landing, SignIn } from './views/Landing'
-import { ChooseRole } from './views/ChooseRole'
-import { DevDiscover, FounderDiscover } from './views/Discover'
-import { Matches } from './views/Matches'
+import { Discover } from './views/Discover'
+import { Applications } from './views/Applications'
 import { DevProfileView } from './views/DevProfile'
-import { StartupView } from './views/StartupView'
 import { AdminView } from './views/Admin'
 import { Privacy, Terms } from './views/Legal'
 
-/** Hash routes: #/discover, #/matches, #/matches/12, #/profile, #/startup, #/admin, #/signin/<token> */
+/** Hash routes: #/discover, #/applications, #/profile, #/admin, #/signin/<token> */
 function readRoute() {
   const [page = '', arg = ''] = location.hash.replace(/^#\/?/, '').split('/')
   return { page, arg }
@@ -18,14 +16,18 @@ function readRoute() {
 
 const ICONS: Record<string, ReactNode> = {
   discover: <path d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="2" />,
-  matches: <path d="M4 5h16v11H9l-5 4V5Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />,
+  applications: (
+    <>
+      <path d="M6 3h9l4 4v14H6V3Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  ),
   profile: (
     <>
       <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
       <path d="M4 21c1-4 4-6 8-6s7 2 8 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </>
   ),
-  startup: <path d="M4 20V9l8-5 8 5v11h-5v-6H9v6H4Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />,
   admin: <path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6l8-3Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />,
 }
 
@@ -66,24 +68,16 @@ export default function App() {
   if (route.page === 'signin' && route.arg) return <SignIn token={route.arg} onDone={refresh} />
   if (!me) return offline ? <p className="pad">Can’t reach HireMe right now. Check your connection and reload.</p> : null
   if (!me.user) return <Landing />
-  if (!me.user.role) return <ChooseRole onDone={refresh} />
 
   const { user, counts } = me
-  const isDev = user.role === 'dev'
-  const homeTab = isDev ? 'profile' : 'startup'
-  const tabs = ['discover', 'matches', homeTab, ...(user.isAdmin ? ['admin'] : [])]
-  const labels: Record<string, string> = { discover: 'Discover', matches: 'Matches', profile: 'Profile', startup: 'Startup', admin: 'Admin' }
-  const badges: Record<string, number> = {
-    discover: counts?.interested ?? 0,
-    matches: (counts?.unread ?? 0) + (counts?.needsYou ?? 0),
-    admin: (counts?.pendingStartups ?? 0) + (counts?.openReports ?? 0),
-  }
+  const tabs = ['discover', 'applications', 'profile', ...(user.isAdmin ? ['admin'] : [])]
+  const labels: Record<string, string> = { discover: 'Discover', applications: 'Applications', profile: 'Profile', admin: 'Admin' }
+  const badges: Record<string, number> = { applications: counts?.needsYou ?? 0, admin: counts?.openReports ?? 0 }
 
-  // Onboarding: devs need a profile, founders need a startup, before anything else is useful.
-  let page = tabs.includes(route.page) ? route.page : 'discover'
-  if (isDev && !me.profileComplete && page === 'discover') page = 'profile'
-  if (!isDev && !me.startup && page !== 'admin') page = 'startup'
-  const onboarding = (isDev && !me.profileComplete) || (!isDev && !me.startup)
+  // Old links to #/matches go to Applications. New developers set up their profile first.
+  let page = route.page === 'matches' ? 'applications' : tabs.includes(route.page) ? route.page : 'discover'
+  if (!me.profileComplete && page === 'discover') page = 'profile'
+  const onboarding = !me.profileComplete
 
   return (
     <div className="shell">
@@ -105,7 +99,7 @@ export default function App() {
         </nav>
         <div className="rail-foot">
           <p className="rail-who">
-            {isDev ? 'Developer' : me.startup?.name || 'Founder'}
+            {me.profile?.name || 'Developer'}
             <span>{user.email}</span>
           </p>
           <button
@@ -126,10 +120,9 @@ export default function App() {
             Can’t reach HireMe right now. We’ll keep trying.
           </div>
         )}
-        {page === 'discover' && (isDev ? <DevDiscover onChange={refresh} /> : <FounderDiscover me={me} onChange={refresh} />)}
-        {page === 'matches' && <Matches me={me} openId={Number(route.arg) || null} onChange={refresh} />}
+        {page === 'discover' && <Discover onChange={refresh} />}
+        {page === 'applications' && <Applications onChange={refresh} />}
         {page === 'profile' && <DevProfileView onboarding={onboarding} onSaved={refresh} />}
-        {page === 'startup' && <StartupView me={me} onChange={refresh} />}
         {page === 'admin' && user.isAdmin && <AdminView onChange={refresh} />}
       </main>
     </div>

@@ -135,43 +135,21 @@ test('import: small YC startups and their developer roles, nothing else', async 
   assert.equal(db.prepare("SELECT title FROM roles WHERE external_id = 'greenhouse:7'").get().title, 'Staff Software Engineer');
 });
 
-test('developers see imported roles; a yes points to the company’s application page', async () => {
+test('developers see imported roles, ranked by shared skills; a yes starts an application', async () => {
   const dev = client();
   await dev.signIn('dev@example.com', 'dev');
-  await dev.req('PUT', '/profile', { name: 'Dee', headline: 'Engineer', skills: 'React, Node.js' });
+  await dev.req('PUT', '/profile', { name: 'Dee Example', headline: 'Engineer', skills: 'React, Node.js' });
   const deck = (await dev.req('GET', '/deck')).body;
   const tr = deck.find((c) => c.startup.name === 'Tiny Rocket');
-  assert.ok(tr.external.apply_url.includes('ashbyhq.com'));
-  assert.equal(tr.startup.onHireMe, false);
+  assert.ok(tr.apply_url.includes('ashbyhq.com'));
   assert.deepEqual(tr.sharedSkills.sort(), ['node.js', 'react']);
   assert.equal(deck[0].startup.name, 'Tiny Rocket', 'more shared skills ranks first');
 
   const r = (await dev.req('POST', `/deck/${tr.id}`, { liked: true })).body;
-  assert.equal(r.matched, false);
-  assert.ok(r.external.apply_url.includes('/application'));
+  assert.ok(r.apply_url.includes('/application'));
+  assert.ok(r.applySetup.missing.includes('phone'), 'asks for what it still needs before applying');
   const saved = (await dev.req('GET', '/saved')).body;
   assert.equal(saved[0].startup_name, 'Tiny Rocket');
-
-  // A founder with a Tiny Rocket email claims it, sees the waiting yes, and matches
-  const founder = client();
-  const me = await founder.signIn('ana@tinyrocket.example', 'founder');
-  assert.equal(me.joinable.claimable, true);
-  const conflict = await founder.req('POST', '/startup', { name: 'Tiny Rocket', website: 'tinyrocket.example', headcount: 6, confirmNotAgency: true });
-  assert.equal(conflict.status, 409);
-  assert.equal(conflict.body.existing.claimable, true);
-  const claimed = await founder.req('POST', '/startup/join', { id: me.joinable.id });
-  assert.equal(claimed.body.status, 'approved');
-  const devs = (await founder.req('GET', `/deck/devs?role=${tr.id}`)).body;
-  assert.equal(devs[0].name, 'Dee');
-  assert.equal(devs[0].likedRole, true);
-  assert.equal((await founder.req('POST', `/deck/devs/${devs[0].id}`, { role: tr.id, liked: true })).body.matched, true);
-  assert.equal((await dev.req('GET', '/saved')).body.length, 0, 'no longer an outside application once they’re on HireMe');
-
-  // Someone at a different company can't claim it
-  const other = client();
-  const om = await other.signIn('x@otherco.example', 'founder');
-  assert.equal(om.joinable, null);
-  assert.equal((await other.req('POST', '/startup/join', { id: me.joinable.id })).status, 403);
 });
 
 test('re-import: removed posts close, startups that grow past 50 are retired', async () => {

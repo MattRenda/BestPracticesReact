@@ -349,7 +349,7 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
       if (dev && away && !recent) {
         lastEmailed.set(app.dev_id, Date.now());
         const role = db.prepare('SELECT r.title, s.name FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.id = ?').get(app.role_id);
-        notify(dev.email, `Your application to ${role.name} needs you`, `HireMe started your application for ${role.title} at ${role.name}, but needs a hand: ${r.error}.\n\n${appLink('matches')}`);
+        notify(dev.email, `Your application to ${role.name} needs you`, `HireMe started your application for ${role.title} at ${role.name}, but needs a hand: ${r.error}.\n\n${appLink('applications')}`);
       }
     }
   }

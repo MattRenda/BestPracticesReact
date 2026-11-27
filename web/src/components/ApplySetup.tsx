@@ -4,11 +4,11 @@ import type { ApplyField, DevProfile } from '../types'
 import { Sheet } from './ui'
 
 export const CONSENT_TEXT =
-  'When I say yes to a startup that isn’t on HireMe yet, HireMe applies for me: it fills their application from my profile, attaches my resume, drafts answers to open-ended questions, accepts their privacy terms, and submits. It always asks me about work authorization, sponsorship, salary, start dates and similar questions instead of guessing.'
+  'When I swipe right on a role, HireMe applies for me: it fills the startup’s application from my profile, attaches my resume, drafts answers to open-ended questions, accepts their privacy terms, and submits. It always asks me about work authorization, sponsorship, salary, start dates and similar questions instead of guessing.'
 
 type Target = { roleId: number; startupName: string; applyUrl: string; missing: ApplyField[]; consented: boolean }
 
-/** Shown the first time a developer says yes to an imported role, or when details are missing. */
+/** Shown the first time a developer swipes right, or when details HireMe needs are missing. */
 export function ApplySetup({ target, onClose, onQueued }: { target: Target | null; onClose: () => void; onQueued: (startupName: string) => void }) {
   const [p, setP] = useState<DevProfile | null>(null)
   const [consent, setConsent] = useState(false)
@@ -82,7 +82,7 @@ export function ApplySetup({ target, onClose, onQueued }: { target: Target | nul
     <Sheet open={!!target} onClose={onClose} label="Apply for me">
       <form onSubmit={submit} className="role-form">
         <h2>Let HireMe apply to {target.startupName}?</h2>
-        <p className="sheet-sub">{target.startupName} isn’t on HireMe yet, so HireMe can fill out and submit their application for you.</p>
+        <p className="sheet-sub">HireMe fills out and submits {target.startupName}’s application for you. It needs a few things first, just this once.</p>
         {!p ? (
           <p className="muted">Loading…</p>
         ) : (
