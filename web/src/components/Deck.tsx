@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react'
 
 const THRESHOLD = 110
-/** Movement (px) before a drag commits to sideways (swipe) or up/down (ignored). */
-const LOCK = 8
+/** How steep a swipe can be and still count: |dy| up to 1.8 × |dx| (about 60° off horizontal). */
+const MAX_SLOPE = 1.8
 
 type Props<T extends { id: number }> = {
   items: T[] | null
@@ -23,9 +23,9 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
   const [history, setHistory] = useState<T[]>([])
   const [drag, setDrag] = useState({ x: 0, active: false })
   const [fling, setFling] = useState<'left' | 'right' | null>(null)
-  // The card owns every touch (touch-action: none) so a swipe works the same from any part of it,
-  // and it only ever moves sideways. Up/down drags do nothing.
-  const start = useRef({ x: 0, y: 0, t: 0, axis: '' as '' | 'x' | 'y' })
+  // The card owns every touch (touch-action: none) so a swipe works the same from any part of it.
+  // It only ever moves sideways, following the finger's horizontal movement even on a diagonal.
+  const start = useRef({ x: 0, y: 0, t: 0, dy: 0 })
 
   const visible = items?.filter((i) => !gone.has(i.id)) ?? null
   const top = visible?.[0]
@@ -103,25 +103,21 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
     // Taps on links and buttons, and anything in a sheet opened from the card, aren't drags.
     if (fling || disabled || (e.target as HTMLElement).closest('a, button, dialog')) return
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    start.current = { x: e.clientX, y: e.clientY, t: performance.now(), axis: '' }
+    start.current = { x: e.clientX, y: e.clientY, t: performance.now(), dy: 0 }
     setDrag({ x: 0, active: true })
   }
   function onMove(e: RPointerEvent) {
     if (!drag.active) return
-    const s = start.current
-    const dx = e.clientX - s.x
-    const dy = e.clientY - s.y
-    if (!s.axis) {
-      if (Math.max(Math.abs(dx), Math.abs(dy)) < LOCK) return
-      s.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y'
-      s.t = performance.now()
-    }
-    if (s.axis === 'x') setDrag({ x: dx, active: true })
+    start.current.dy = e.clientY - start.current.y
+    setDrag({ x: e.clientX - start.current.x, active: true })
   }
   function onUp() {
     if (!drag.active) return
-    const v = Math.abs(drag.x) / Math.max(1, performance.now() - start.current.t)
-    if (start.current.axis === 'x' && (Math.abs(drag.x) > THRESHOLD || (v > 0.65 && Math.abs(drag.x) > 40))) swipe(drag.x > 0 ? 'right' : 'left')
+    const dx = Math.abs(drag.x)
+    const v = dx / Math.max(1, performance.now() - start.current.t)
+    // Diagonal swipes count: anything up to about 60° off horizontal, up or down.
+    const sideways = Math.abs(start.current.dy) <= dx * MAX_SLOPE
+    if (sideways && (dx > THRESHOLD || (v > 0.5 && dx > 40))) swipe(drag.x > 0 ? 'right' : 'left')
     else setDrag({ x: 0, active: false })
   }
 
