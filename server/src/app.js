@@ -296,7 +296,9 @@ export function createApp(
     const location = str(req.body?.location, 120) || p.location || '';
     if (!name.trim() && !emails.some((e) => /@/.test(e) && !/\.invalid$/.test(e))) return res.status(400).json({ error: 'Add your name first, so HireMe knows who to look for' });
     try {
-      res.json({ candidates: await finder.find({ name, emails, location }) });
+      const site = str(req.body?.website, 300) || p.links?.portfolio || '';
+      const [candidates, fromSite] = await Promise.all([finder.find({ name, emails, location }), finder.linkedinFromSite?.(site).catch(() => '') ?? '']);
+      res.json({ candidates, linkedin: fromSite ? { url: fromSite, from: site.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/.*$/, '') } : null });
     } catch (e) {
       log.warn?.(`[findme] ${e.message}`);
       res.status(e.busy ? 503 : 502).json({ error: e.busy ? e.message : 'Couldn’t reach GitHub. Try again in a minute.' });
@@ -625,8 +627,8 @@ export function createApp(
   // PDFs that left a gap where a ligature was ("So ware") cut titles short ("Senior So"). The resume
   // is on file, so read it again and take the new value only when the saved one is a cut-off start of it.
   (async () => {
-    if (db.prepare("SELECT 1 FROM settings WHERE key = 'repair_cut_fields_1'").get()) return;
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('repair_cut_fields_1', datetime('now'))").run();
+    if (db.prepare("SELECT 1 FROM settings WHERE key = 'repair_cut_fields_2'").get()) return;
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('repair_cut_fields_2', datetime('now'))").run();
     let fixed = 0;
     const rows = db.prepare("SELECT p.*, u.email FROM dev_profiles p JOIN users u ON u.id = p.user_id WHERE p.resume_file IS NOT NULL AND p.resume_file != ''").all();
     for (const p of rows) {

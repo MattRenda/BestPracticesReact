@@ -60,7 +60,8 @@ export const api = {
 
   report: (id: number, reason: string, detail = '') => call<{ ok: boolean }>('POST', '/reports', { type: 'startup', id, reason, detail }),
 
-  findLinks: (who: { name?: string; email?: string; location?: string }) => call<{ candidates: FoundAccount[] }>('POST', '/profile/find-links', who),
+  findLinks: (who: { name?: string; email?: string; location?: string; website?: string }) =>
+    call<{ candidates: FoundAccount[]; linkedin: { url: string; from: string } | null }>('POST', '/profile/find-links', who),
 
   hiring: () => call<Hiring>('GET', '/hiring'),
   createCompany: (c: Partial<HiringCompany>) => call<Hiring>('POST', '/hiring/startup', c),

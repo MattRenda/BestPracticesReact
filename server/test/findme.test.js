@@ -51,3 +51,27 @@ test('GitHub rate limit comes back as a friendly error', async () => {
   const f = createFindMe({ fetchImpl: async () => json({ message: 'rate limit' }, 403), log: { info() {} } });
   await assert.rejects(f.find({ name: 'Dana Smith', emails: [] }), /GitHub is busy/);
 });
+
+test('LinkedIn from the developer’s own website; private addresses are never fetched', async () => {
+  const { linkedinIn, privateAddress, fetchPublicPage } = await import('../src/safe-fetch.js');
+  assert.equal(linkedinIn('<a href="https://linkedin.com/in/dana-smith-1a2b/">LinkedIn</a>'), 'https://www.linkedin.com/in/dana-smith-1a2b');
+  assert.equal(linkedinIn('<a href="https://www.linkedin.com/company/acme">'), '');
+  for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '::1', 'fd00::1', '::ffff:10.0.0.1', '100.64.0.1'])
+    assert.ok(privateAddress(ip), ip);
+  for (const ip of ['8.8.8.8', '140.82.112.3', '2606:4700::1111']) assert.ok(!privateAddress(ip), ip);
+  let fetched = 0;
+  const fetchImpl = async () => (fetched++, new Response('<a href="https://linkedin.com/in/x-y-z">', { headers: { 'content-type': 'text/html' } }));
+  assert.equal(await fetchPublicPage('http://127.0.0.1/', { fetchImpl }), '');
+  assert.equal(await fetchPublicPage('http://localhost:3000/', { fetchImpl }), '');
+  assert.equal(await fetchPublicPage('file:///etc/passwd', { fetchImpl }), '');
+  assert.equal(fetched, 0);
+  // A public site that redirects to a private address stops there
+  let hop = 0;
+  const redirecting = async () => (hop++ ? new Response('secret') : new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/latest' } }));
+  assert.equal(await fetchPublicPage('https://dana.dev', { fetchImpl: redirecting, resolve: async (u) => { if (u.hostname.startsWith('169.')) throw new Error('private'); } }), '');
+  assert.equal(hop, 1);
+
+  const f = createFindMe({ fetchImpl: fakeGitHub(), log: { info() {} }, pageFetch: async (u) => (u === 'https://dana.dev' ? '<a href="https://www.linkedin.com/in/dana-from-site">' : '') });
+  assert.equal(await f.linkedinFromSite('https://dana.dev'), 'https://www.linkedin.com/in/dana-from-site');
+  assert.equal(await f.linkedinFromSite('https://github.com/dana'), '');
+});

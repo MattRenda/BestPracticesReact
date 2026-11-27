@@ -1,4 +1,4 @@
-import { FindMe } from '../components/FindMe'
+import { FindMe, PasteLinkedIn } from '../components/FindMe'
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { api, uploadResumeFile } from '../api'
 import type { DevProfile, WorkPref } from '../types'
@@ -61,6 +61,23 @@ export function DevProfileView({ isGuest, pendingEmail, onSaved }: { isGuest: bo
       setToast('Imported — check it over, then save')
     } catch {
       setToast('That file isn’t a HireMe profile (.json)')
+    }
+  }
+
+  // Confirming a found account or pasting a LinkedIn link is the save: no extra Save tap needed.
+  async function saveLinks(found: Partial<NonNullable<DevProfile['links']>>) {
+    if (!p) return
+    const next = { ...p, links: { ...p.links, ...found } }
+    setP(next)
+    try {
+      setP(await api.saveProfile(next))
+      setDirty(false)
+      onSaved()
+      const names = [found.github && 'GitHub', found.linkedin && 'LinkedIn', found.portfolio && 'website'].filter(Boolean)
+      setToast(`${names.join(' and ').replace(/ and (?=.* and )/, ', ')} saved`)
+    } catch (err) {
+      setDirty(true)
+      setToast((err as Error).message)
     }
   }
 
@@ -206,22 +223,9 @@ export function DevProfileView({ isGuest, pendingEmail, onSaved }: { isGuest: bo
           <legend className="legend-row">
             <span>Links</span>
             <FindMe
-              who={{ name: p.name, location: p.location }}
+              who={{ name: p.name, location: p.location, website: p.links?.portfolio }}
               links={p.links ?? {}}
-              onPick={async (found) => {
-                // Confirming an account is the save: no extra Save tap needed.
-                const next = { ...p, links: { ...p.links, ...found } }
-                setP(next)
-                try {
-                  setP(await api.saveProfile(next))
-                  setDirty(false)
-                  onSaved()
-                  setToast(found.linkedin ? 'GitHub and LinkedIn saved' : 'GitHub saved')
-                } catch (err) {
-                  setDirty(true)
-                  setToast((err as Error).message)
-                }
-              }}
+              onPick={saveLinks}
             />
           </legend>
           <div className="row2">
@@ -231,7 +235,10 @@ export function DevProfileView({ isGuest, pendingEmail, onSaved }: { isGuest: bo
             </label>
             <label className="field">
               <span>LinkedIn</span>
-              <input type="url" value={p.links?.linkedin ?? ''} onChange={(e) => update({ links: { ...p.links, linkedin: e.target.value } })} />
+              <span className="input-with-btn">
+                <input type="url" value={p.links?.linkedin ?? ''} onChange={(e) => update({ links: { ...p.links, linkedin: e.target.value } })} placeholder="https://www.linkedin.com/in/you" />
+                <PasteLinkedIn onLink={(url) => saveLinks({ linkedin: url })} onError={setToast} />
+              </span>
             </label>
           </div>
           <label className="field">

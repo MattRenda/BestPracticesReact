@@ -66,3 +66,75 @@ test('name: never a city, and the file name helps when the layout hides it', asy
   const b = parseResumeText('Portland OR\nSoftware Engineer\nExperience\nEngineer, X Jan 2020 - Present', [], NOW, hints);
   assert.equal(b.name, 'Jordan Example');
 });
+
+test('LinkedIn "Save to PDF": link, headline, location, summary, roles (several at one company), education, top skills', async () => {
+  const { parseResumeText, isLinkedInPdf } = await import('../src/resume-parse.js');
+  const text = `Contact
+dana@example.com
+www.linkedin.com/in/dana-
+smith-1a2b3c (LinkedIn)
+dana.dev (Personal)
+Top Skills
+React.js
+Node.js
+TypeScript
+Languages
+English (Native or Bilingual)
+Dana Smith
+Senior Software Engineer at Lumen | React, Node,
+TypeScript
+Sacramento, California, United States
+Summary
+I build web apps for small teams. Ten years of shipping React and
+Node.js products.
+Experience
+Lumen Labs
+Senior Software Engineer
+March 2021 - Present (3 years 9 months)
+Sacramento, California, United States
+Led the move to TypeScript across the web app and cut build times
+in half.
+Built the billing service in Node.js.
+Acme Corp
+4 years 1 month
+Software Engineer
+January 2019 - February 2021 (2 years 2 months)
+Shipped the React dashboard.
+Junior Developer
+February 2017 - January 2019 (2 years)
+Page 1 of 2
+Education
+California State University-Sacramento
+Bachelor of Science - BS, Computer Science · (2012 - 2016)
+Page 2 of 2`;
+  assert.ok(isLinkedInPdf(text));
+  const r = parseResumeText(text, [], new Date('2026-11-27'));
+  assert.equal(r.name, 'Dana Smith');
+  assert.equal(r.headline, 'Senior Software Engineer at Lumen | React, Node, TypeScript');
+  assert.equal(r.location, 'Sacramento, California, United States');
+  assert.equal(r.links.linkedin, 'https://www.linkedin.com/in/dana-smith-1a2b3c');
+  assert.equal(r.links.portfolio, 'https://dana.dev');
+  assert.equal(r.skills, 'React.js, Node.js, TypeScript');
+  assert.match(r.bio, /^I build web apps for small teams\. Ten years of shipping React and Node\.js products\.$/);
+  assert.equal(
+    r.experience.split('\n').slice(0, 6).join('\n'),
+    [
+      'Senior Software Engineer — Lumen Labs · March 2021 - Present',
+      '- Led the move to TypeScript across the web app and cut build times in half.',
+      '- Built the billing service in Node.js.',
+      'Software Engineer — Acme Corp · January 2019 - February 2021',
+      '- Shipped the React dashboard.',
+      'Junior Developer — Acme Corp · February 2017 - January 2019',
+    ].join('\n'),
+  );
+  assert.match(r.experience, /Education\nCalifornia State University-Sacramento/);
+  assert.ok(!/Page \d/.test(r.experience));
+});
+
+test('links broken across lines are rejoined; real words are not "fixed"', async () => {
+  const { joinWrappedLinks, fixLigatures } = await import('../src/resume-parse.js');
+  assert.equal(joinWrappedLinks('www.linkedin.com/in/matthew-\nrenda-123 (LinkedIn)'), 'www.linkedin.com/in/matthew-renda-123 (LinkedIn)');
+  assert.equal(joinWrappedLinks('linkedin.com/in/matthew\u2010renda'), 'linkedin.com/in/matthew-renda');
+  assert.equal(joinWrappedLinks('github.com/dana\nReact, Node'), 'github.com/dana\nReact, Node');
+  assert.equal(fixLigatures('Led a team. Ran git rebase. Checked the sha.'), 'Led a team. Ran git rebase. Checked the sha.');
+});

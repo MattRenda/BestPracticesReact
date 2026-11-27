@@ -5,13 +5,21 @@
 // the developer's own GitHub profile links to it. The app also offers linkedin.com/in/me, which opens
 // the signed-in member's own profile so they can copy its address.
 
+import { fetchPublicPage, linkedinIn } from './safe-fetch.js';
+
 const GH = 'https://api.github.com';
 
 const clean = (s) => String(s || '').trim();
 const norm = (s) => clean(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 const realEmail = (e) => /@/.test(e || '') && !/\.invalid$/i.test(e) && !/noreply/i.test(e);
 
-export function createFindMe({ fetchImpl = fetch, token = process.env.GITHUB_TOKEN, log = console } = {}) {
+export function createFindMe({ fetchImpl = fetch, token = process.env.GITHUB_TOKEN, log = console, pageFetch = (u) => fetchPublicPage(u, { fetchImpl }) } = {}) {
+  /** The LinkedIn link on the developer's own website, if it has one. */
+  async function linkedinFromSite(site) {
+    if (!site || /linkedin\.com|github\.com/i.test(site)) return '';
+    return linkedinIn(await pageFetch(site).catch(() => ''));
+  }
+
   const cache = new Map(); // key → { at, result }
 
   async function gh(path, accept = 'application/vnd.github+json') {
@@ -85,6 +93,9 @@ export function createFindMe({ fetchImpl = fetch, token = process.env.GITHUB_TOK
         (/linkedin\.com\/in\//i.test(u.blog || '') ? u.blog : '') ||
         (u.bio || '').match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[\w%-]+/i)?.[0] ||
         '';
+      const website = u.blog && !/linkedin\.com/i.test(u.blog) ? (/^https?:/i.test(u.blog) ? u.blog : `https://${u.blog}`) : '';
+      // Not on their GitHub? Their own website often links it.
+      const linkedinSite = !linkedin && website && score >= 40 ? await linkedinFromSite(website) : '';
       out.push({
         login,
         name: u.name || '',
@@ -93,8 +104,8 @@ export function createFindMe({ fetchImpl = fetch, token = process.env.GITHUB_TOK
         location: u.location || '',
         bio: u.bio || '',
         repos: u.public_repos ?? 0,
-        website: u.blog && !/linkedin\.com/i.test(u.blog) ? (/^https?:/i.test(u.blog) ? u.blog : `https://${u.blog}`) : '',
-        linkedin: linkedin ? linkedin.replace(/^http:/i, 'https:').replace(/\/$/, '') : '',
+        website,
+        linkedin: linkedin ? linkedin.replace(/^http:/i, 'https:').replace(/\/$/, '') : linkedinSite,
         why,
         score,
       });
@@ -106,7 +117,7 @@ export function createFindMe({ fetchImpl = fetch, token = process.env.GITHUB_TOK
     log.info?.(`[findme] ${result.length} GitHub candidates`);
     return result;
   }
-  return { find };
+  return { find, linkedinFromSite };
 }
 
 function rethrowBusy(e) {

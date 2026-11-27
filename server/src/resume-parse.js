@@ -44,9 +44,9 @@ fulfill fulfilled fulfillment`
   .filter(Boolean);
 const LIGATURES = ['ffi', 'ffl', 'ff', 'fi', 'fl', 'ft'];
 const REAL = new Set(
-  'ask ash utter eat ear ate aid art act add age ago air all and any are arm bed bet but can cat cut end eye for get hat her him his how ice ill its let lot low man men new not now old one our out own put ran red run saw say see set she sit six ten the too top two use was way who why win yes yet you ore oat ion ease ever lies late lags lex'.split(' '),
+  'ask ash utter eat ear ate aid art act add age ago air all and any are arm bed bet but can cat cut end eye for get hat her him his how ice ill its let lot low man men new not now old one our out own put ran red run saw say see set she sit six ten the too top two use was way who why win yes yet you ore oat ion ease ever lies late lags lex led rebase sha rene sta ber ling'.split(' '), // real words that a dropped ligature can also produce
 );
-const BROKEN = (() => {
+export const BROKEN = (() => {
   const map = new Map();
   for (const w of LIGATURE_WORDS)
     for (const lig of LIGATURES) {
@@ -239,8 +239,19 @@ function findLocation(lines) {
 
 const PHONE = /(?:\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/;
 
+// PDFs break long links across lines ("linkedin.com/in/matthew-" / "renda-1a2b3c (LinkedIn)") and draw their
+// hyphens as Unicode dashes. Rejoin a profile link whose slug was cut at a line end.
+const DASHES = /[\u2010\u2011\u2012\u2013\u00ad]/g;
+export function joinWrappedLinks(text) {
+  return String(text)
+    .replace(DASHES, '-')
+    .replace(/((?:linkedin\.com\/in|github\.com)\/([\w%-]*))[ \t]*\n[ \t]*([\w%-]+)(?=[ \t]*(\(LinkedIn\)|\n|$))/gi, (m, url, slug, more, tag) =>
+      slug.endsWith('-') || slug.length < 3 || tag ? url + more : m,
+    );
+}
+
 function findLinks(text, annotations) {
-  const all = [...annotations, ...(String(text).match(/(?:https?:\/\/|www\.)[^\s|•·,;)]+|\b(?:github\.com|linkedin\.com|gitlab\.com)\/[^\s|•·,;)]+/gi) || [])]
+  const all = [...annotations.map((u) => String(u).replace(DASHES, '-')), ...(String(text).match(/(?:https?:\/\/|www\.)[^\s|•·,;)]+|\b(?:github\.com|linkedin\.com|gitlab\.com)\/[^\s|•·,;)]+/gi) || [])]
     .map((u) => u.replace(/[.,;:]+$/, ''))
     .filter((u) => !/^mailto:|^tel:/i.test(u));
   const norm = (u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
@@ -317,7 +328,8 @@ function formatExperience(lines, education) {
 
 /** Suggested profile fields from a resume's text. Fields it can't find are left out. */
 export function parseResumeText(text, linkAnnotations = [], now = new Date(), hints = {}) {
-  const lines = fixLigatures(text)
+  if (isLinkedInPdf(text)) return parseLinkedInPdf(text, linkAnnotations, now);
+  const lines = joinWrappedLinks(fixLigatures(text))
     .split(/\r?\n/)
     .map((l) => l.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
@@ -341,6 +353,114 @@ export function parseResumeText(text, linkAnnotations = [], now = new Date(), hi
     headline: title ? [title, skills.slice(0, 3).join(', ')].filter(Boolean).join(' · ').slice(0, 120) : '',
   };
   return clean(out);
+}
+
+// ---------- LinkedIn's "Save to PDF" ----------
+// A two-column page: a sidebar (Contact, the profile link "… (LinkedIn)", Top Skills, Languages,
+// Certifications…) and then the name, headline, location, Summary, Experience and Education.
+
+const LI_SIDEBAR = /^(contact|top skills|languages|certifications|honors-awards|honors & awards|publications|patents|projects|organizations)$/i;
+const LI_DURATION = /^\d+ (?:years?|months?)(?: \d+ months?)?$/i;
+const LI_DATES = new RegExp(`^(${POINT})\\s*-\\s*(${POINT}|present)(?:\\s*\\(.*\\))?$`, 'i');
+
+export function isLinkedInPdf(text) {
+  const t = String(text);
+  return /linkedin\.com\/in\/[\s\S]{0,80}\(LinkedIn\)/i.test(t) && (/^\s*Top Skills\s*$/im.test(t) || /^\s*Page \d+ of \d+\s*$/im.test(t));
+}
+
+export function parseLinkedInPdf(text, linkAnnotations = [], now = new Date()) {
+  const lines = joinWrappedLinks(fixLigatures(text))
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter((l) => l && !/^Page \d+ of \d+$/i.test(l));
+  const at = (re, from = 0) => lines.findIndex((l, i) => i >= from && re.test(l));
+
+  // Sidebar
+  const links = findLinks(lines.filter((l) => /\((LinkedIn|Personal|Portfolio|Company|Blog|Other)\)$/i.test(l) || /github\.com\//i.test(l)).join('\n'), linkAnnotations);
+  for (const l of lines) {
+    const site = l.match(/^(\S+\.\S+) \((Personal|Portfolio|Blog|Other)\)$/i)?.[1];
+    if (site && !/linkedin\.com|github\.com/i.test(site)) links.portfolio ??= /^https?:/i.test(site) ? site : `https://${site}`;
+  }
+  const phone = (lines.find((l) => PHONE.test(l) && /\((mobile|home|work)\)$/i.test(l)) || '').match(PHONE)?.[0] || '';
+  // Main column: name, headline, location sit just above Summary (or Experience).
+  const summaryAt = at(/^Summary$/i);
+  const expAt = at(/^Experience$/i);
+  const eduAt = at(/^Education$/i, Math.max(expAt, 0));
+  const anchor = summaryAt >= 0 ? summaryAt : expAt;
+  let name = '';
+  let nameAt = -1;
+  let headline = '';
+  let location = '';
+  if (anchor > 0) {
+    let i = anchor - 1;
+    if (looksLikePlace(lines[i]) || /,/.test(lines[i])) location = lines[i--] || '';
+    // The headline can wrap; the name is the first line above it that looks like a name.
+    const head = [];
+    while (i >= 0 && !/^[\p{Lu}][\p{L}.'’-]*(?: [\p{Lu}][\p{L}.'’-]*){1,3}$/u.test(lines[i]) && head.length < 3) head.unshift(lines[i--]);
+    name = i >= 0 ? lines[i] : '';
+    nameAt = i;
+    headline = head.join(' ');
+  }
+  // LinkedIn shows up to 3 (sometimes 5) top skills, ending at the next sidebar heading or the name.
+  const skillsAt = at(/^Top Skills$/i);
+  const topSkills = [];
+  if (skillsAt >= 0)
+    for (let i = skillsAt + 1; i < lines.length && topSkills.length < 5 && !LI_SIDEBAR.test(lines[i]) && (nameAt < 0 || i < nameAt); i++) topSkills.push(lines[i]);
+  const bio = summaryAt >= 0 ? lines.slice(summaryAt + 1, expAt > summaryAt ? expAt : undefined).join(' ').slice(0, 1500) : '';
+
+  // Experience: "Company" ["5 years 2 months"] "Title" "Month Year - Present (…)" ["Place"] details…
+  const exp = expAt >= 0 ? lines.slice(expAt + 1, eduAt > expAt ? eduAt : undefined) : [];
+  const dateIdx = exp.map((l, i) => (LI_DATES.test(l) ? i : -1)).filter((i) => i >= 0);
+  const entries = [];
+  let company = '';
+  // Where each entry starts: its company line (and "4 years 1 month" line) when it has them. A second role at
+  // the same company starts right at its title, after the previous role's details.
+  const companyish = (l) => !!l && l.length < 60 && !/[.!?;]$/.test(l) && /^[\p{Lu}\d]/u.test(l);
+  const starts = dateIdx.map((d, k) => {
+    const prev = k ? dateIdx[k - 1] : -1;
+    if (d - 3 > prev && LI_DURATION.test(exp[d - 2])) return { at: d - 3, company: exp[d - 3] };
+    if (d - 2 > prev && companyish(exp[d - 2])) return { at: d - 2, company: exp[d - 2] };
+    return { at: d - 1, company: null };
+  });
+  dateIdx.forEach((d, k) => {
+    if (starts[k].company) company = starts[k].company;
+    const end = k + 1 < dateIdx.length ? starts[k + 1].at : exp.length;
+    let from = d + 1;
+    if (exp[from] && exp[from].length < 60 && (looksLikePlace(exp[from]) || /,|area$|remote/i.test(exp[from]))) from++;
+    entries.push({ title: exp[d - 1] || '', company, dates: exp[d].replace(/\s*\(.*\)$/, ''), details: exp.slice(from, Math.max(from, end)) });
+  });
+  const education = eduAt >= 0 ? lines.slice(eduAt + 1).filter((l) => !LI_SIDEBAR.test(l)) : [];
+  const experience = [
+    ...entries.flatMap((e) => [`${e.title} — ${e.company} · ${e.dates}`, ...joinSentences(e.details).map((d) => `- ${d}`)]),
+    ...(education.length ? ['', 'Education', ...education] : []),
+  ]
+    .join('\n')
+    .trim()
+    .slice(0, 6000);
+  const skills = mergeSkills(topSkills, extractSkills(lines.join('\n'), 20));
+  return clean({
+    name: titleCase(name),
+    headline: headline.slice(0, 120),
+    location,
+    phone,
+    links,
+    skills: skills.join(', '),
+    bio,
+    experience,
+    years: yearsFrom(entries.map((e) => e.dates).join('\n'), now),
+  });
+}
+
+/** LinkedIn wraps descriptions at the column edge; put sentences back together. */
+function joinSentences(lines) {
+  const out = [];
+  for (const raw of lines) {
+    const l = raw.replace(/^[•\-*▪◦]\s*/, '');
+    const bullet = l !== raw;
+    if (out.length && !bullet && !/[.!?:]$/.test(out[out.length - 1]) && /^[\p{Ll}\d(]/u.test(l)) out[out.length - 1] += ` ${l}`;
+    else out.push(l);
+  }
+  return out;
 }
 
 /** Keeps only non-empty, well-typed fields. */
