@@ -424,10 +424,10 @@ export function Onboarding({ isGuest, email, onDone }: { isGuest: boolean; email
   return (
     <main className="onboarding">
       <header className="ob-top">
-        <span className="brand">
+        <a className="brand" href="#/home">
           <img src="/hireme.svg" alt="" width={28} height={28} />
           <span>HireMe</span>
-        </span>
+        </a>
         {isGuest && (
           <button type="button" className="link-btn" onClick={() => setSignIn(true)}>
             Have an account? Sign in
@@ -465,7 +465,9 @@ export function Onboarding({ isGuest, email, onDone }: { isGuest: boolean; email
               Back
             </button>
           ) : (
-            <span />
+            <a className="btn ghost" href="#/home">
+              Back
+            </a>
           )}
           {current !== 'years' && (
             <button className="btn primary" disabled={!canGo || saving || reading}>

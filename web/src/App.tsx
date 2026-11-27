@@ -9,7 +9,7 @@ import { Onboarding } from './views/Onboarding'
 import { AdminView } from './views/Admin'
 import { Privacy, Terms } from './views/Legal'
 
-/** Hash routes: #/discover, #/applications, #/profile, #/admin, #/signin/<token> */
+/** Hash routes: #/home, #/discover, #/applications, #/profile, #/admin, #/signin/<token> */
 function readRoute() {
   const [page = '', arg = ''] = location.hash.replace(/^#\/?/, '').split('/')
   return { page, arg }
@@ -68,7 +68,7 @@ export default function App() {
   if (location.pathname === '/terms') return <Terms />
   if (route.page === 'signin' && route.arg) return <SignIn token={route.arg} onDone={refresh} />
   if (!me) return offline ? <p className="pad">Can’t reach HireMe right now. Check your connection and reload.</p> : null
-  if (!me.user) return <Landing onStart={refresh} />
+  if (!me.user || route.page === 'home') return <Landing me={me} onStart={refresh} />
 
   const { user, counts } = me
   // Guests (started without signing up) can't apply until they add an email, so no Applications tab yet.
@@ -84,7 +84,7 @@ export default function App() {
   return (
     <div className="shell">
       <aside className="rail">
-        <a className="brand" href="#/discover">
+        <a className="brand" href="#/home">
           <img src="/hireme.svg" alt="" width={30} height={30} />
           <span>HireMe</span>
         </a>
@@ -123,6 +123,10 @@ export default function App() {
         </div>
       </aside>
       <main className="main">
+        <a className="mobile-brand" href="#/home" aria-label="HireMe home">
+          <img src="/hireme.svg" alt="" width={24} height={24} />
+          <span>HireMe</span>
+        </a>
         {offline && (
           <div className="banner" role="alert">
             Can’t reach HireMe right now. We’ll keep trying.

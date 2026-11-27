@@ -552,3 +552,12 @@ a { color: var(--moss); }
 .ob-known { margin: 4px 0; font-size: var(--t-lg); }
 .ob-google { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .ob-fine { color: var(--muted); font-size: 0.8rem; line-height: 1.5; margin-top: 4px; }
+
+/* ---------- getting home ---------- */
+.landing-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.ob-top .brand, .landing-top .brand { text-decoration: none; color: var(--ink); }
+.mobile-brand { display: none; }
+@media (max-width: 720px) {
+  .mobile-brand { display: inline-flex; align-items: center; gap: 7px; text-decoration: none; color: var(--ink); font-family: var(--display); font-weight: 800; font-size: var(--t-md); margin: -4px 0 8px; }
+  .swipe-view { min-height: calc(100dvh - 146px); }
+}

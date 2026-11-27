@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { GoogleButton } from '../components/GoogleButton'
+import type { Me } from '../types'
 
-export function Landing({ onStart }: { onStart: () => void }) {
+/** Remember the home page in history, so the browser's back button returns here from the app. */
+function leaveHomeFor(hash: string) {
+  history.replaceState(null, '', '/#/home')
+  location.hash = hash
+}
+
+/** The home page. Signed-out visitors start here; signed-in people can come back to it (#/home). */
+export function Landing({ me, onStart }: { me?: Me; onStart: () => void }) {
+  const user = me?.user ?? null
   const [starting, setStarting] = useState(false)
   const [startError, setStartError] = useState('')
 
@@ -12,7 +21,7 @@ export function Landing({ onStart }: { onStart: () => void }) {
     setStartError('')
     try {
       await api.startGuest()
-      location.hash = '#/profile'
+      leaveHomeFor('#/profile')
       onStart()
     } catch (e) {
       setStartError((e as Error).message)
@@ -36,10 +45,15 @@ export function Landing({ onStart }: { onStart: () => void }) {
   return (
     <div className="landing">
       <header className="landing-top">
-        <span className="brand">
+        <a className="brand" href="#/home">
           <img src="/hireme.svg" alt="" width={32} height={32} />
           <span>HireMe</span>
-        </span>
+        </a>
+        {user && (
+          <a className="btn ghost small" href="#/discover">
+            {me?.profileComplete ? 'Open HireMe' : 'Continue setting up'}
+          </a>
+        )}
       </header>
 
       <section className="hero">
@@ -54,10 +68,18 @@ export function Landing({ onStart }: { onStart: () => void }) {
             Engineering jobs at small startups, one card at a time. Swipe right and HireMe fills out the application from your profile and sends it. Free.
           </p>
           <div className="hero-cta">
-            <button type="button" className="btn primary big" onClick={start} disabled={starting}>
-              {starting ? 'One sec…' : 'Find a startup job →'}
-            </button>
-            <span className="muted">A few quick taps. No forms.</span>
+            {user ? (
+              <button type="button" className="btn primary big" onClick={() => leaveHomeFor('#/discover')}>
+                {me?.profileComplete ? 'Keep swiping →' : 'Continue setting up →'}
+              </button>
+            ) : (
+              <>
+                <button type="button" className="btn primary big" onClick={start} disabled={starting}>
+                  {starting ? 'One sec…' : 'Find a startup job →'}
+                </button>
+                <span className="muted">A few quick taps. No forms.</span>
+              </>
+            )}
             {startError && <p className="error">{startError}</p>}
           </div>
           <ul className="promises">
@@ -76,6 +98,33 @@ export function Landing({ onStart }: { onStart: () => void }) {
           </p>
         </div>
 
+        {user ? (
+          <div className="signin-card">
+            <h2 className="signin-title">{user.isGuest ? 'You’re partway in' : 'You’re signed in'}</h2>
+            <p className="muted">
+              {user.isGuest
+                ? user.pendingEmail
+                  ? `Waiting for you to confirm ${user.pendingEmail}.`
+                  : 'Your answers are saved on this device until you add your email.'
+                : user.email}
+            </p>
+            <button type="button" className="btn primary wide" onClick={() => leaveHomeFor('#/discover')}>
+              {me?.profileComplete ? 'Keep swiping' : 'Continue setting up'}
+            </button>
+            <button
+              type="button"
+              className="link-btn"
+              onClick={async () => {
+                if (user.isGuest && !confirm('Start over? What you’ve answered so far will be lost.')) return
+                await api.logout()
+                location.hash = ''
+                onStart()
+              }}
+            >
+              {user.isGuest ? 'Start over' : 'Sign out'}
+            </button>
+          </div>
+        ) : (
         <form className="signin-card" onSubmit={submit}>
           {state.kind === 'sent' ? (
             <div className="sent">
@@ -119,6 +168,7 @@ export function Landing({ onStart }: { onStart: () => void }) {
             </>
           )}
         </form>
+        )}
       </section>
     </div>
   )

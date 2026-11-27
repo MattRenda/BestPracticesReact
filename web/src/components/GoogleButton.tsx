@@ -59,6 +59,8 @@ export function GoogleButton({ onError, before }: { onError: (msg: string) => vo
               const problem = await latest.current.before?.()
               if (problem) throw new Error(problem)
               const r = await api.googleSignIn(credential)
+              // From the home page, keep it in history so the back button returns to it.
+              if (!location.hash || location.hash === '#/home') history.replaceState(null, '', '/#/home')
               location.hash = r.sent?.length ? '#/applications' : '#/discover'
               location.reload()
             } catch (e) {
