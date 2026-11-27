@@ -177,8 +177,10 @@ a.btn { display: inline-block; text-decoration: none; text-align: center; }
   border-radius: 18px;
   padding: 22px 22px 16px;
   box-shadow: 0 1px 0 var(--rule), 0 18px 40px -22px rgb(30 43 36 / 0.45);
-  touch-action: pan-y;
+  touch-action: none; /* Deck.tsx handles every drag: sideways swipes, up/down scrolls the description */
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   cursor: grab;
   transition: transform 0.23s cubic-bezier(.2,.7,.3,1);
   will-change: transform;
@@ -190,9 +192,9 @@ a.btn { display: inline-block; text-decoration: none; text-align: center; }
 .card-company { font-size: var(--t-3xl); font-weight: 800; letter-spacing: -0.03em; line-height: 1; overflow-wrap: anywhere; }
 .card-title { font-family: var(--display); font-size: var(--t-xl); font-weight: 500; margin: 8px 0 6px; line-height: 1.2; }
 .card-meta { font-size: var(--t-sm); color: var(--soil); margin: 0 0 14px; white-space: pre-wrap; }
-/* The body scrolls, so it's its own touch-action root: without pan-y here the browser takes horizontal drags
-   that start in it (pointercancel) and the card won't move. Vertical drags still scroll the description. */
-.card-body { flex: 1; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; border-top: 1px solid var(--rule); padding-top: 12px; font-size: 0.95rem; color: var(--ink); mask-image: linear-gradient(to bottom, #000 85%, transparent); }
+/* The body scrolls (wheel on desktop; Deck.tsx scrolls it by hand on touch). touch-action: none keeps it from
+   being its own touch root, which let the browser take drags that started here. */
+.card-body { flex: 1; overflow-y: auto; touch-action: none; overscroll-behavior: contain; border-top: 1px solid var(--rule); padding-top: 12px; font-size: 0.95rem; color: var(--ink); mask-image: linear-gradient(to bottom, #000 85%, transparent); }
 .card-body p { margin: 0 0 10px; white-space: pre-line; max-width: 70ch; }
 .card-link { font-size: var(--t-sm); font-weight: 700; color: var(--moss); margin-top: 10px; align-self: flex-start; }
 .stamp {

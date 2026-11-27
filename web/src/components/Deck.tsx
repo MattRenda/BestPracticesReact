@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react'
 
 const THRESHOLD = 110
+/** Movement (px) before a drag commits to sideways (swipe) or up/down (scroll the description). */
+const LOCK = 8
 
 type Props<T extends { id: number }> = {
   items: T[] | null
@@ -19,9 +21,11 @@ type Props<T extends { id: number }> = {
 export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderCard, behindLabel, cardLabel, empty, disabled, yesLabel = 'Yes' }: Props<T>) {
   const [gone, setGone] = useState<Set<number>>(new Set())
   const [history, setHistory] = useState<T[]>([])
-  const [drag, setDrag] = useState({ x: 0, y: 0, active: false })
+  const [drag, setDrag] = useState({ x: 0, active: false })
   const [fling, setFling] = useState<'left' | 'right' | null>(null)
-  const start = useRef({ x: 0, y: 0, t: 0 })
+  // The card owns every touch (touch-action: none) so a swipe works the same from any part of it.
+  // Up/down drags scroll the description by hand instead; the card itself only ever moves sideways.
+  const start = useRef({ x: 0, y: 0, t: 0, axis: '' as '' | 'x' | 'y', body: null as HTMLElement | null, scrollTop: 0 })
 
   const visible = items?.filter((i) => !gone.has(i.id)) ?? null
   const top = visible?.[0]
@@ -57,7 +61,7 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
     setFling(dir)
     setTimeout(() => {
       setFling(null)
-      setDrag({ x: 0, y: 0, active: false })
+      setDrag({ x: 0, active: false })
       commit(top, dir === 'right')
     }, 230)
   }
@@ -98,18 +102,28 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
   function onDown(e: RPointerEvent) {
     if (fling || disabled || (e.target as HTMLElement).closest('a, button')) return
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    start.current = { x: e.clientX, y: e.clientY, t: performance.now() }
-    setDrag({ x: 0, y: 0, active: true })
+    const body = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.card-body')
+    start.current = { x: e.clientX, y: e.clientY, t: performance.now(), axis: '', body, scrollTop: body?.scrollTop ?? 0 }
+    setDrag({ x: 0, active: true })
   }
   function onMove(e: RPointerEvent) {
     if (!drag.active) return
-    setDrag({ x: e.clientX - start.current.x, y: (e.clientY - start.current.y) * 0.25, active: true })
+    const s = start.current
+    const dx = e.clientX - s.x
+    const dy = e.clientY - s.y
+    if (!s.axis) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < LOCK) return
+      s.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y'
+      s.t = performance.now()
+    }
+    if (s.axis === 'x') setDrag({ x: dx, active: true })
+    else if (s.body) s.body.scrollTop = s.scrollTop - dy
   }
   function onUp() {
     if (!drag.active) return
     const v = Math.abs(drag.x) / Math.max(1, performance.now() - start.current.t)
-    if (Math.abs(drag.x) > THRESHOLD || (v > 0.65 && Math.abs(drag.x) > 40)) swipe(drag.x > 0 ? 'right' : 'left')
-    else setDrag({ x: 0, y: 0, active: false })
+    if (start.current.axis === 'x' && (Math.abs(drag.x) > THRESHOLD || (v > 0.65 && Math.abs(drag.x) > 40))) swipe(drag.x > 0 ? 'right' : 'left')
+    else setDrag({ x: 0, active: false })
   }
 
   const x = fling ? (fling === 'right' ? 1 : -1) * (window.innerWidth + 200) : drag.x
@@ -133,11 +147,11 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
             <article
               key={top.id}
               className={`card ${drag.active ? 'dragging' : ''}`}
-              style={{ transform: `translate(${x}px, ${fling ? 0 : drag.y}px) rotate(${x / 18}deg)` }}
+              style={{ transform: `translateX(${x}px) rotate(${x / 18}deg)` }}
               onPointerDown={onDown}
               onPointerMove={onMove}
               onPointerUp={onUp}
-              onPointerCancel={() => setDrag({ x: 0, y: 0, active: false })}
+              onPointerCancel={() => setDrag({ x: 0, active: false })}
               aria-label={cardLabel(top)}
             >
               <span className="stamp stamp-apply" style={{ opacity: yesOpacity }} aria-hidden="true">
