@@ -38,6 +38,14 @@ export interface DevProfile {
   has_resume?: boolean
   resume_name?: string | null
   saved_answers?: { question: string; answer: string }[]
+  // Answers HireMe gives on common form questions ('' = use the default shown in form_defaults)
+  form_salary?: string
+  form_notice?: string
+  form_relocate?: '' | 'yes' | 'no'
+  form_onsite?: '' | 'yes' | 'no'
+  form_defaults?: { salary: string; notice: string; startDate: string; relocate: 'yes' | 'no'; onsite: 'yes' | 'no' }
+  /** Fill each application, then wait for the developer to send it. */
+  review_first?: boolean
   applyMissing?: ApplyField[]
   /** After saving: startups HireMe started applying to because the profile became ready. */
   sent?: string[]
@@ -45,7 +53,7 @@ export interface DevProfile {
 
 export type ApplyField = 'name' | 'phone' | 'work_authorized' | 'needs_sponsorship' | 'resume'
 
-export type ApplicationState = 'queued' | 'running' | 'submitted' | 'needs_you' | 'failed' | 'canceled' | 'self_applied'
+export type ApplicationState = 'queued' | 'running' | 'review' | 'submitted' | 'needs_you' | 'failed' | 'canceled' | 'self_applied'
 
 export interface Application {
   id: number
@@ -85,7 +93,7 @@ export interface Startup {
 
 export interface Me {
   user: User | null
-  counts?: { needsYou: number; openReports?: number }
+  counts?: { needsYou: number; toReview: number; openReports?: number }
   profile?: DevProfile | null
   profileComplete?: boolean
 }

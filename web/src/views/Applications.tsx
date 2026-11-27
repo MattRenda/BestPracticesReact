@@ -34,7 +34,10 @@ export function Applications({ onChange }: { onChange: () => void }) {
   }
 
   const needsYou = apps?.filter((a) => a.state === 'needs_you') ?? []
-  const rest = apps?.filter((a) => a.state !== 'needs_you') ?? []
+  const toReview = apps?.filter((a) => a.state === 'review') ?? []
+  const rest = apps?.filter((a) => a.state !== 'needs_you' && a.state !== 'review') ?? []
+  // Each question once, however many applications are waiting on it.
+  const questions = [...new Map(needsYou.flatMap((a) => a.missing).map((q) => [q.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(), q])).values()]
   const sent = apps?.filter((a) => a.state === 'submitted' || a.state === 'self_applied').length ?? 0
 
   return (
@@ -43,7 +46,7 @@ export function Applications({ onChange }: { onChange: () => void }) {
         <h1>Applications</h1>
         {apps && apps.length > 0 && (
           <p className="lede">
-            {sent} sent{needsYou.length ? ` · ${needsYou.length} need${needsYou.length === 1 ? 's' : ''} you` : ''}
+            {sent} sent{toReview.length ? ` · ${toReview.length} ready to check` : ''}{needsYou.length ? ` · ${needsYou.length} need${needsYou.length === 1 ? 's' : ''} you` : ''}
           </p>
         )}
       </header>
@@ -62,8 +65,27 @@ export function Applications({ onChange }: { onChange: () => void }) {
         </div>
       ) : null}
 
-      {needsYou.length > 0 && <AppList title="Needs you" note="A question HireMe can’t answer for you. Answer it once and it’s saved for other forms." apps={needsYou} onOpen={setOpenApp} />}
-      {rest.length > 0 && <AppList title={needsYou.length ? 'Everything else' : ''} apps={rest} onOpen={setOpenApp} />}
+      {questions.length > 0 && (
+        <AnswerOnce
+          questions={questions}
+          waiting={needsYou}
+          onDone={(n) => {
+            setToast(n ? `Sending ${n} application${n === 1 ? '' : 's'}` : 'Saved')
+            load()
+            onChange()
+          }}
+        />
+      )}
+      {toReview.length > 0 && <AppList title="Ready to check" note="HireMe filled these out. Check each one and send it." apps={toReview} onOpen={setOpenApp} />}
+      {needsYou.length > 0 && (
+        <AppList
+          title={questions.length ? 'Waiting on you' : 'Needs you'}
+          note={questions.length ? 'These go out once the questions above are answered.' : 'Tap one to see what happened.'}
+          apps={needsYou}
+          onOpen={setOpenApp}
+        />
+      )}
+      {rest.length > 0 && <AppList title={needsYou.length || toReview.length ? 'Everything else' : ''} apps={rest} onOpen={setOpenApp} />}
 
       {saved.length > 0 && (
         <section className="saved">
@@ -112,6 +134,52 @@ export function Applications({ onChange }: { onChange: () => void }) {
   )
 }
 
+/** One box per question, however many applications asked it. Answers are saved and reused on later forms. */
+function AnswerOnce({ questions, waiting, onDone }: { questions: string[]; waiting: Application[]; onDone: (requeued: number) => void }) {
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const count = (q: string) => waiting.filter((a) => a.missing.includes(q)).length
+  const given = questions.filter((q) => answers[q]?.trim())
+
+  return (
+    <form
+      className="answer-once"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        setBusy(true)
+        setError('')
+        try {
+          const r = await api.answerAll(given.map((q) => ({ question: q, answer: answers[q].trim() })))
+          setAnswers({})
+          onDone(r.requeued)
+        } catch (err) {
+          setError((err as Error).message)
+        } finally {
+          setBusy(false)
+        }
+      }}
+    >
+      <h2>
+        {questions.length === 1 ? 'One question' : `${questions.length} questions`} and HireMe sends {waiting.length === 1 ? 'your application' : `${waiting.length} applications`}
+      </h2>
+      <p className="muted small">Answer once; HireMe remembers it for every form that asks.</p>
+      {questions.map((q) => (
+        <label key={q} className="field">
+          <span>
+            {q} {count(q) > 1 && <em className="muted">· {count(q)} applications</em>}
+          </span>
+          <input value={answers[q] ?? ''} onChange={(e) => setAnswers((a) => ({ ...a, [q]: e.target.value }))} />
+        </label>
+      ))}
+      {error && <p className="error">{error}</p>}
+      <button className="btn primary" disabled={busy || !given.length}>
+        {busy ? 'Sending…' : 'Save and send'}
+      </button>
+    </form>
+  )
+}
+
 function AppList({ title, note, apps, onOpen }: { title: string; note?: string; apps: Application[]; onOpen: (a: Application) => void }) {
   return (
     <section className="saved">
@@ -140,6 +208,7 @@ function AppList({ title, note, apps, onOpen }: { title: string; note?: string; 
 const STATE_LABEL: Record<Application['state'], string> = {
   queued: 'Waiting to apply',
   running: 'Applying now…',
+  review: 'Ready to check',
   submitted: 'Applied',
   needs_you: 'Needs you',
   failed: 'Couldn’t apply',
@@ -147,7 +216,7 @@ const STATE_LABEL: Record<Application['state'], string> = {
   self_applied: 'You applied',
 }
 function StateChip({ state }: { state: Application['state'] }) {
-  const tone = state === 'submitted' || state === 'self_applied' ? 'ok' : state === 'needs_you' ? 'wait' : state === 'failed' ? 'bad' : ''
+  const tone = state === 'submitted' || state === 'self_applied' ? 'ok' : state === 'needs_you' || state === 'review' ? 'wait' : state === 'failed' ? 'bad' : ''
   return <span className={`pill ${tone}`}>{STATE_LABEL[state]}</span>
 }
 
@@ -210,13 +279,45 @@ function ApplicationSheet({ app, onClose, onChanged }: { app: Application | null
           </form>
         )}
 
+        {app.state === 'review' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              const edited = app.answers.filter((a) => answers[a.question] !== undefined && answers[a.question].trim() !== a.answer).map((a) => ({ question: a.question, answer: answers[a.question].trim() }))
+              act(() => api.sendApplication(app.id, edited))
+            }}
+          >
+            <p className="small">HireMe filled this out and is waiting for your OK. Change any answer, then send it.</p>
+            {app.answers.map((a) => (
+              <label key={a.question} className="field">
+                <span>{a.question}</span>
+                <textarea rows={Math.min(6, Math.ceil(a.answer.length / 34) + 1)} value={answers[a.question] ?? a.answer} onChange={(e) => setAnswers((x) => ({ ...x, [a.question]: e.target.value }))} />
+              </label>
+            ))}
+            {app.cover_note && (
+              <details>
+                <summary>Cover note</summary>
+                <p className="small pre">{app.cover_note}</p>
+              </details>
+            )}
+            <div className="sheet-actions">
+              <button type="button" className="btn ghost" disabled={busy} onClick={() => act(() => api.cancelApplication(app.id))}>
+                Don’t send
+              </button>
+              <button className="btn primary" disabled={busy}>
+                Send it
+              </button>
+            </div>
+          </form>
+        )}
+
         {app.has_screenshot && (
-          <details className="shot">
+          <details className="shot" open={app.state === 'review'}>
             <summary>What the form looked like</summary>
             <img src={`/api/applications/${app.id}/screenshot?v=${encodeURIComponent(app.updated_at)}`} alt="Screenshot of the application form" loading="lazy" />
           </details>
         )}
-        {(app.answers.length > 0 || app.cover_note) && (
+        {app.state !== 'review' && (app.answers.length > 0 || app.cover_note) && (
           <details>
             <summary>What HireMe sent</summary>
             {app.answers.map((a, i) => (

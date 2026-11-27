@@ -337,12 +337,21 @@ function ApplyingSection({
     <fieldset className="group">
       <legend>Applying for you</legend>
       <p className="group-note">When you swipe right, HireMe fills out and sends the startup’s application with these. It asks you about anything it can’t answer truthfully.</p>
+      <label className="toggle">
+        <input type="checkbox" checked={!!p.review_first} onChange={(e) => update({ review_first: e.target.checked })} />
+        <span className="toggle-track" aria-hidden="true" />
+        <span className="toggle-text">
+          <span>Review before sending</span>
+          <small>HireMe fills out each application, then waits for you to check it and tap Send. Off: it sends right away.</small>
+        </span>
+      </label>
       <label className="field">
         <span>Phone</span>
         <input type="tel" autoComplete="tel" value={p.phone ?? ''} onChange={(e) => update({ phone: e.target.value })} />
       </label>
       {yesNo('work_authorized', 'Authorized to work in the US?')}
       {yesNo('needs_sponsorship', 'Need visa sponsorship?')}
+      <FormAnswers p={p} update={update} />
       <div className="field">
         <span className="field-label">Resume</span>
         {p.has_resume ? (
@@ -394,5 +403,40 @@ function ApplyingSection({
         </details>
       )}
     </fieldset>
+  )
+}
+
+/** The answers HireMe gives to questions almost every form asks. Blank means the default shown. */
+function FormAnswers({ p, update }: { p: DevProfile; update: (patch: Partial<DevProfile>) => void }) {
+  const d = p.form_defaults
+  const choice = (k: 'form_relocate' | 'form_onsite', label: string, auto: string | undefined) => (
+    <label className="field">
+      <span>{label}</span>
+      <select value={p[k] ?? ''} onChange={(e) => update({ [k]: e.target.value as '' | 'yes' | 'no' })}>
+        <option value="">Automatic ({auto === 'yes' ? 'Yes' : 'No'}, from how you like to work)</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+    </label>
+  )
+  return (
+    <details className="form-answers">
+      <summary>Answers HireMe gives on forms</summary>
+      <p className="muted small">For the questions almost every application asks. Leave a box empty to use what’s shown.</p>
+      <div className="row2">
+        <label className="field">
+          <span>Salary expectations</span>
+          <input value={p.form_salary ?? ''} onChange={(e) => update({ form_salary: e.target.value })} placeholder={d?.salary} />
+        </label>
+        <label className="field">
+          <span>Notice period / when you can start</span>
+          <input value={p.form_notice ?? ''} onChange={(e) => update({ form_notice: e.target.value })} placeholder={d?.notice} />
+        </label>
+      </div>
+      <div className="row2">
+        {choice('form_onsite', 'Open to working in an office?', d?.onsite)}
+        {choice('form_relocate', 'Willing to relocate?', d?.relocate)}
+      </div>
+    </details>
   )
 }

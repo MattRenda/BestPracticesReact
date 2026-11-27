@@ -572,3 +572,11 @@ a { color: var(--moss); }
 @media (max-width: 860px) {
   .hero { grid-template-areas: 'copy' 'card' 'more'; }
 }
+
+/* ---------- answer once / review ---------- */
+.answer-once { border: 1px solid var(--rule); border-left: 5px solid var(--pollen); border-radius: 12px; background: var(--surface); padding: 16px 18px; margin: 8px 0 18px; display: flex; flex-direction: column; gap: 10px; }
+.answer-once h2 { font-size: var(--t-lg); }
+.answer-once .btn { align-self: flex-start; }
+.answer-once em { font-style: normal; font-weight: 400; }
+.form-answers { margin: 10px 0 4px; }
+.form-answers summary { cursor: pointer; font-weight: 700; font-size: var(--t-sm); margin-bottom: 8px; }

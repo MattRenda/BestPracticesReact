@@ -14,7 +14,7 @@ import { letterHtml, profileResume, resumeHtml } from './resume.js';
 const FILLER = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'filler.js'), 'utf8');
 const DECLINE = /decline|prefer not|don.?t wish|do not wish|not to (say|answer|disclose|self)|choose not/i;
 const SUCCESS = /thank(s| you) for (applying|your (application|interest))|application (was |has been )?(received|submitted|sent)|we('ve| have) received your application|successfully (submitted|applied)|your application is complete/i;
-const CAPTCHA_FRAME = /recaptcha\/api2\/(anchor|bframe)|hcaptcha\.com\/captcha|challenges\.cloudflare\.com/;
+const CAPTCHA_FRAME = /recaptcha\/(api2|enterprise)\/(anchor|bframe)|hcaptcha\.com\/captcha|challenges\.cloudflare\.com/;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -41,6 +41,43 @@ export function applyReadiness(p) {
   if (!['yes', 'no'].includes(p?.needs_sponsorship)) missing.push('needs_sponsorship');
   // No resume uploaded is fine: HireMe builds one from the profile (see resumeFor).
   return missing;
+}
+
+/**
+ * What HireMe answers on common form questions it can't read off the profile. The developer sees and
+ * can change every one of these on their profile; these are only the starting points.
+ */
+export function formDefaults(p, now = new Date()) {
+  const notice = String(p?.form_notice || '').trim() || '2 weeks';
+  const weeks = Number(notice.match(/(\d+)\s*week/i)?.[1] ?? (/immediate|now|asap/i.test(notice) ? 0 : 2));
+  const start = new Date(now.getTime() + weeks * 7 * 86_400_000);
+  const remote = p?.work_pref === 'remote';
+  return {
+    salary: String(p?.form_salary || '').trim() || (p?.salary_min ? `$${Number(p.salary_min).toLocaleString('en-US')}` : 'Flexible — happy to discuss'),
+    notice,
+    startDate: start.toISOString().slice(0, 10),
+    relocate: ['yes', 'no'].includes(p?.form_relocate) ? p.form_relocate : remote ? 'no' : 'yes',
+    onsite: ['yes', 'no'].includes(p?.form_onsite) ? p.form_onsite : remote ? 'no' : 'yes',
+  };
+}
+
+/** The developer's facts, for Claude to answer factual questions from (and nothing else). */
+function factsFor(p) {
+  const d = formDefaults(p);
+  const yn = (v) => (v === 'yes' ? 'Yes' : v === 'no' ? 'No' : 'unknown');
+  return [
+    `Based in: ${p.location || 'unknown'}`,
+    `Prefers to work: ${p.work_pref || 'any'}`,
+    `Authorized to work in the US: ${yn(p.work_authorized)}`,
+    `Needs visa sponsorship: ${yn(p.needs_sponsorship)}`,
+    `Willing to relocate: ${yn(d.relocate)}`,
+    `Open to working in an office / on-site / hybrid: ${yn(d.onsite)}`,
+    `Salary expectation: ${d.salary}`,
+    `Notice period / can start: ${d.notice} (around ${d.startDate})`,
+    p.years != null ? `Years of professional experience: ${p.years}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 async function launchBrowser(env) {
@@ -83,6 +120,7 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
     const firstJob = String(p.experience || '').split('\n').find((l) => l.trim());
     const jm = firstJob?.match(/^(.+?)\s+[—–-]\s+(.+?)(?:\s*\(|$)/);
     const yn = (v) => (v === 'yes' || v === 'no' ? v : '');
+    const d = formDefaults(p);
     return {
       firstName,
       lastName: rest.join(' '),
@@ -98,7 +136,11 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
       currentTitle: jm?.[1] || '',
       currentCompany: jm?.[2] || '',
       yearsExperience: p.years != null ? String(p.years) : '',
-      salaryExpectation: '',
+      salaryExpectation: d.salary,
+      noticePeriod: d.notice,
+      startDate: d.startDate,
+      willingToRelocate: d.relocate,
+      openToOnsite: d.onsite,
       workAuthorized: yn(p.work_authorized),
       requireSponsorship: yn(p.needs_sponsorship),
       referralSource: 'Job board',
@@ -158,13 +200,21 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
     for (const f of page.frames()) n += await f.locator(selector).filter({ visible: true }).count().catch(() => 0);
     return n;
   }
+  /**
+   * A CAPTCHA a person would have to solve. Invisible ones (reCAPTCHA v3/Enterprise "size=invisible",
+   * which Ashby uses on every form) show a small badge and need nothing from anyone, so they don't count;
+   * neither do challenge frames parked off-screen until they're needed.
+   */
   async function hasCaptcha(page, { challengeOnly = false } = {}) {
     for (const f of page.frames()) {
-      if (!CAPTCHA_FRAME.test(f.url())) continue;
-      if (challengeOnly && !/bframe|captcha/.test(f.url())) continue;
+      const u = f.url();
+      if (!CAPTCHA_FRAME.test(u)) continue;
+      if (/[?&]size=invisible/.test(u)) continue;
+      if (challengeOnly && !/bframe|captcha/.test(u)) continue;
       const el = await f.frameElement().catch(() => null);
-      const box = el && (await el.boundingBox().catch(() => null));
-      if (box && box.width > 30 && box.height > 30) return true;
+      if (!el || !(await el.isVisible().catch(() => false))) continue;
+      const box = await el.boundingBox().catch(() => null);
+      if (box && box.width > 30 && box.height > 30 && box.y > -50 && box.x > -50) return true;
     }
     return false;
   }
@@ -237,7 +287,7 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
         answers.push({ question: payload.question, answer: saved, source: 'saved' });
         return { ok: true, data: { answer: saved } };
       }
-      const drafted = await draftAnswer(env, profile, profile.email, job, payload.question, payload.short);
+      const drafted = await draftAnswer(env, { ...profile, facts: factsFor(profile) }, profile.email, job, payload.question, payload.short);
       if (drafted) answers.push({ question: payload.question, answer: drafted, source: 'drafted' });
       return { ok: true, data: { answer: drafted } };
     });
@@ -311,7 +361,7 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
     db.prepare(
       `INSERT INTO applications (dev_id, role_id, state) VALUES (?, ?, 'queued')
        ON CONFLICT (dev_id, role_id) DO UPDATE SET state = 'queued', error = '', missing = '[]', updated_at = datetime('now')
-       WHERE applications.state IN ('needs_you', 'failed', 'canceled')`,
+       WHERE applications.state IN ('needs_you', 'failed', 'canceled', 'review')`,
     ).run(devId, roleId);
     kick();
     return db.prepare('SELECT * FROM applications WHERE dev_id = ? AND role_id = ?').get(devId, roleId);
@@ -342,14 +392,16 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
          updated_at = datetime('now'), submitted_at = CASE WHEN ? = 'submitted' THEN datetime('now') ELSE submitted_at END
        WHERE id = ?`,
     ).run(r.state, r.error || '', JSON.stringify(r.missing || []), JSON.stringify(r.answers || []), r.coverNote || '', shotName, r.state, app.id);
-    if (r.state === 'needs_you' || r.state === 'failed') {
+    if (r.state === 'needs_you' || r.state === 'failed' || r.state === 'review') {
       const dev = db.prepare('SELECT u.email, u.last_seen_at FROM users u WHERE u.id = ?').get(app.dev_id);
       const away = !dev.last_seen_at || Date.now() - new Date(`${dev.last_seen_at}Z`).getTime() > 10 * 60_000;
       const recent = Date.now() - (lastEmailed.get(app.dev_id) || 0) < 2 * 3600_000;
       if (dev && away && !recent) {
         lastEmailed.set(app.dev_id, Date.now());
         const role = db.prepare('SELECT r.title, s.name FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.id = ?').get(app.role_id);
-        notify(dev.email, `Your application to ${role.name} needs you`, `HireMe started your application for ${role.title} at ${role.name}, but needs a hand: ${r.error}.\n\n${appLink('applications')}`);
+        if (r.state === 'review')
+          notify(dev.email, `Your application to ${role.name} is ready to check`, `HireMe filled out your application for ${role.title} at ${role.name}. Check it and send it:\n\n${appLink('applications')}`);
+        else notify(dev.email, `Your application to ${role.name} needs you`, `HireMe started your application for ${role.title} at ${role.name}, but needs a hand: ${r.error}.\n\n${appLink('applications')}`);
       }
     }
   }
@@ -362,7 +414,13 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
     if (!profile) return { state: 'failed', error: 'Profile not found' };
     const url = targetUrl(role, startup);
     if (!url) return { state: 'failed', error: 'No application page for this role' };
-    return applyTo({ url, profile, job: { company: startup.name, title: role.title, description: role.description } });
+    const job = { company: startup.name, title: role.title, description: role.description };
+    // "Review before sending": fill everything, stop short of Submit, and wait for the developer's OK.
+    if (profile.review_first && !app.approved) {
+      const r = await applyTo({ url, profile, job, practice: true });
+      return r.state === 'practiced' ? { ...r, state: 'review', error: '' } : r;
+    }
+    return applyTo({ url, profile, job });
   }
 
   async function tick() {

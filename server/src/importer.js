@@ -50,6 +50,33 @@ export function extractSkills(text, max = 10) {
 }
 
 const updatable = ({ startup_id: _s, external_id: _e, ...rest }) => rest;
+
+const squash = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const NOT_A_COMPANY = /^(the|us|you|your|our|this|role|team|company|job|position|opportunity|it|them|me)\b/i;
+/**
+ * True when a job board lists roles for several companies — a VC's portfolio board or a recruiter's —
+ * rather than the startup's own. Telltales: descriptions that open "About <Other Co>", or titles
+ * ending "- <Other Co>" / "@ <Other Co>", for companies other than this one.
+ */
+export function looksShared(jobs, companyName) {
+  const me = squash(companyName);
+  const others = new Map();
+  let postsForOthers = 0;
+  for (const j of jobs) {
+    const names = new Set();
+    for (const m of String(j.description || '').matchAll(/\bAbout ([A-Z][\w.&'’-]*(?: [A-Z][\w.&'’-]*){0,2})/g))
+      if (!NOT_A_COMPANY.test(m[1])) names.add(m[1]);
+    const t = String(j.title || '').match(/\s(?:-|–|—|@|at)\s+([A-Z][\w.&'’-]*(?: [A-Z][\w.&'’-]*){0,2})(?:\s*\(.*\))?\s*$/);
+    if (t) names.add(t[1]);
+    const foreign = [...names].filter((n) => {
+      const k = squash(n);
+      return k && k !== me && !me.includes(k) && !k.includes(me) && !/^(remote|hybrid|onsite|senior|staff|lead|founding|backend|frontend|fullstack|platform|infra|infrastructure|ai|ml|data|mobile|ios|android|us|usa|eu|emea|apac|newyork|sanfrancisco|london)$/.test(k);
+    });
+    if (foreign.length) postsForOthers++;
+    for (const n of foreign) others.set(squash(n), (others.get(squash(n)) || 0) + 1);
+  }
+  return others.size >= 2 && postsForOthers >= Math.max(2, jobs.length * 0.3);
+}
 const workMode = (s) => (/remote/i.test(s || '') ? 'remote' : /hybrid/i.test(s || '') ? 'hybrid' : 'onsite');
 const slugify = (s) =>
   String(s || '')
@@ -205,7 +232,7 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
         try {
           const jobs = await fetchBoard(ats, slug, get);
           // Only trust a guessed board if its posts mention the company — names collide.
-          if (jobs.length && jobs.some((j) => nameRe.test(j.description) || j.description.toLowerCase().includes(domain))) return { ats, slug };
+          if (jobs.length && !looksShared(jobs, company.name) && jobs.some((j) => nameRe.test(j.description) || j.description.toLowerCase().includes(domain))) return { ats, slug };
         } catch {
           /* try the next guess */
         }
@@ -276,6 +303,14 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
     }
     if (jobs === null || !Array.isArray(jobs)) {
       db.prepare("UPDATE startups SET ats = NULL, ats_checked_at = NULL WHERE id = ?").run(s.id); // board moved; rediscover next run
+      return;
+    }
+    if (looksShared(jobs, c.name)) {
+      // Not this startup's own board: don't list its roles, and don't look again for a while.
+      db.prepare("UPDATE startups SET ats = 'none', ats_slug = NULL, ats_checked_at = datetime('now') WHERE id = ?").run(s.id);
+      const closed = db.prepare("UPDATE roles SET status = 'closed' WHERE startup_id = ? AND source = 'ats' AND status = 'open'").run(s.id).changes;
+      stats.roles_closed += closed;
+      stats.errors.push(`${c.name}: skipped ${board.ats}/${board.slug}, a board shared by several companies`);
       return;
     }
 

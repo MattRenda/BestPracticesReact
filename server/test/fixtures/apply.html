@@ -65,6 +65,23 @@
     f.width = 300; f.height = 80;
     document.getElementById('captcha-slot').appendChild(f);
   }
+  if (location.search.includes('invisible')) {
+    // Ashby-style invisible reCAPTCHA: a badge, nothing to solve
+    const f = document.createElement('iframe');
+    f.src = '/recaptcha/enterprise/anchor?size=invisible';
+    f.width = 256; f.height = 60;
+    document.getElementById('captcha-slot').appendChild(f);
+  }
+  if (location.search.includes('office')) {
+    const d = document.createElement('div');
+    d.innerHTML = [
+      '<div class="field"><label for="office">Are you able to work from our San Francisco office 3 days a week? *</label><select id="office" name="office" required><option value="">Select...</option><option>Yes</option><option>No</option></select></div>',
+      '<div class="field"><label for="where">Are you currently located in California? *</label><select id="where" name="where" required><option value="">Select...</option><option>Yes</option><option>No</option></select></div>',
+      '<div class="field"><label for="salary">What are your salary expectations? *</label><input id="salary" name="salary" required></div>',
+      '<div class="field"><label for="start">When can you start? *</label><input id="start" name="start" required></div>',
+    ].join('');
+    document.getElementById('app').insertBefore(d, document.getElementById('err'));
+  }
   if (location.search.includes('extra')) {
     const d = document.createElement('div');
     d.className = 'field';

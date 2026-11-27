@@ -74,7 +74,7 @@ export default function App() {
   // Guests (started without signing up) can't apply until they add an email, so no Applications tab yet.
   const tabs = ['discover', ...(user.isGuest ? [] : ['applications']), 'profile', ...(user.isAdmin ? ['admin'] : [])]
   const labels: Record<string, string> = { discover: 'Discover', applications: 'Applications', profile: 'Profile', admin: 'Admin' }
-  const badges: Record<string, number> = { applications: counts?.needsYou ?? 0, admin: counts?.openReports ?? 0 }
+  const badges: Record<string, number> = { applications: (counts?.needsYou ?? 0) + (counts?.toReview ?? 0), admin: counts?.openReports ?? 0 }
 
   // Old links to #/matches go to Applications.
   const page = route.page === 'matches' ? 'applications' : tabs.includes(route.page) ? route.page : 'discover'

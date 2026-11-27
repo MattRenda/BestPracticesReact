@@ -196,6 +196,12 @@ export function openDb(file = DB_PATH) {
     ['resume_name', 'TEXT'],
     ['auto_apply', 'INTEGER NOT NULL DEFAULT 0'], // no longer used: swiping right is the consent
     ['saved_answers', "TEXT NOT NULL DEFAULT '[]'"], // [{question, answer}]
+    // Answers HireMe gives to common form questions; empty means the default (see formDefaults).
+    ['form_salary', "TEXT NOT NULL DEFAULT ''"],
+    ['form_notice', "TEXT NOT NULL DEFAULT ''"],
+    ['form_relocate', "TEXT NOT NULL DEFAULT ''"], // yes | no | ''
+    ['form_onsite', "TEXT NOT NULL DEFAULT ''"], // yes | no | ''
+    ['review_first', 'INTEGER NOT NULL DEFAULT 0'], // fill each form, then wait for the developer to say send
   ]);
   db.exec(`
     -- Applications HireMe submits for developers to startups that aren't on HireMe yet.
@@ -220,6 +226,9 @@ export function openDb(file = DB_PATH) {
     CREATE INDEX IF NOT EXISTS roles_open ON roles (status, startup_id);
     CREATE INDEX IF NOT EXISTS startups_status ON startups (status);
   `);
+  // 'review': filled and waiting for the developer to say send (review_first). approved = they said send.
+  addColumns('applications', [['approved', 'INTEGER NOT NULL DEFAULT 0']]);
+
   // HireMe is for developers only now: founder accounts (and accounts that never picked) become developers.
   db.exec("UPDATE users SET role = 'dev' WHERE role != 'dev'");
 

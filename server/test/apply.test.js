@@ -45,7 +45,7 @@ before(async () => {
 
   // An imported (listed) startup whose application form is the local mock
   const sid = db.prepare("INSERT INTO startups (name, website, domain, headcount, source, status) VALUES ('Acme', 'https://acme.example', 'acme.example', 8, 'yc', 'listed')").run().lastInsertRowid;
-  for (const q of ['', '?captcha=1', '?extra=1'])
+  for (const q of ['', '?captcha=1', '?extra=1', '?extra=1&b=1', '?invisible=1', '?office=1'])
     db.prepare("INSERT INTO roles (startup_id, source, external_id, title, description, apply_url, skills) VALUES (?, 'ats', ?, 'Senior React Engineer', 'React and Node at Acme.', ?, 'React')").run(sid, `ashby:${q || 'main'}`, `${siteBase}/job${q}`);
 
   try {
@@ -178,4 +178,66 @@ test('CAPTCHA and unanswerable questions come back to the developer; answers are
   assert.equal(submissions.at(-1).clearance, 'None');
   const profile = (await dev.req('GET', '/profile')).body;
   assert.equal(profile.saved_answers[0].answer, 'None', 'saved for next time');
+});
+
+test('Ashby-style invisible reCAPTCHA doesn’t stop an application', async (t) => {
+  if (!browserOk) return t.skip('no browser available');
+  const dev = client();
+  await dev.signIn('matt@example.com');
+  await dev.req('POST', `/deck/${roleId('?invisible=1')}`, { liked: true });
+  await applier.tick();
+  const a = (await dev.req('GET', '/applications')).body.find((x) => x.role_id === roleId('?invisible=1'));
+  assert.equal(a.state, 'submitted', `${a.state}: ${a.error}`);
+});
+
+test('common questions are answered from the profile and its form defaults; one answer clears every application asking it', async (t) => {
+  if (!browserOk) return t.skip('no browser available');
+  const dev = client();
+  await dev.signIn('kit@example.com');
+  await dev.req('PUT', '/profile', { ...PROFILE, name: 'Kit Lee', phone: '916-555-0101', work_authorized: 'yes', needs_sponsorship: 'no', work_pref: 'hybrid', salary_min: 150000 });
+  const p = (await dev.req('GET', '/profile')).body;
+  assert.deepEqual([p.form_defaults.salary, p.form_defaults.notice, p.form_defaults.onsite], ['$150,000', '2 weeks', 'yes']);
+
+  await dev.req('POST', `/deck/${roleId('?office=1')}`, { liked: true });
+  await applier.tick();
+  let list = (await dev.req('GET', '/applications')).body;
+  const office = list.find((x) => x.role_id === roleId('?office=1'));
+  assert.equal(office.state, 'submitted', `${office.state}: ${office.error} ${office.missing}`);
+  const s = submissions.at(-1);
+  assert.deepEqual([s.office, s.where, s.salary, s.start], ['Yes', 'Yes', '$150,000', '2 weeks']);
+
+  // Two applications stuck on the same question: answering once sends both
+  for (const q of ['?extra=1', '?extra=1&b=1']) await dev.req('POST', `/deck/${roleId(q)}`, { liked: true });
+  await applier.tick();
+  list = (await dev.req('GET', '/applications')).body.filter((x) => x.state === 'needs_you');
+  assert.equal(list.length, 2);
+  const r = (await dev.req('POST', '/applications/answers', { answers: [{ question: list[0].missing[0], answer: 'None' }] })).body;
+  assert.equal(r.requeued, 2);
+  await applier.tick();
+  list = (await dev.req('GET', '/applications')).body;
+  assert.equal(list.filter((x) => x.state === 'submitted').length, 3);
+});
+
+test('review before sending: HireMe fills the form, then waits for the developer to send it', async (t) => {
+  if (!browserOk) return t.skip('no browser available');
+  const dev = client();
+  await dev.signIn('careful@example.com');
+  await dev.req('PUT', '/profile', { ...PROFILE, name: 'Cam Ray', phone: '916-555-0102', work_authorized: 'yes', needs_sponsorship: 'no', review_first: true });
+  const before = submissions.length;
+  const sw = await dev.req('POST', `/deck/${roleId('main')}`, { liked: true });
+  assert.equal(sw.body.application?.state, 'queued', JSON.stringify(sw.body));
+  await applier.tick();
+  let a = (await dev.req('GET', '/applications')).body[0];
+  assert.equal(a.state, 'review');
+  assert.equal(submissions.length, before, 'nothing sent yet');
+  assert.equal((await dev.req('GET', '/me')).body.counts.toReview, 1);
+  assert.ok(a.answers.some((x) => /why/i.test(x.question)), 'shows what it would send');
+
+  // Edit an answer and send
+  const why = a.answers.find((x) => /why/i.test(x.question));
+  assert.equal((await dev.req('POST', `/applications/${a.id}/send`, { answers: [{ question: why.question, answer: 'I love what Acme builds.' }] })).body.state, 'queued');
+  await applier.tick();
+  a = (await dev.req('GET', '/applications')).body[0];
+  assert.equal(a.state, 'submitted', `${a.state}: ${a.error}`);
+  assert.equal(submissions.at(-1).why, 'I love what Acme builds.');
 });

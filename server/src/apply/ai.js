@@ -74,9 +74,9 @@ Thanks,
 ${profile.name || first}`;
 }
 
-/** Drafts an answer to an open-ended question. Returns '' when it shouldn't or can't. */
+/** Drafts an answer. Returns '' when it shouldn't or can't. */
 export async function draftAnswer(env, profile, email, job, question, short) {
-  if (FACTUAL.test(question)) return '';
+  if (FACTUAL.test(question)) return factualAnswer(env, profile, job, question, short);
   if (!aiEnabled(env)) {
     if (/why.{0,40}(interest|want|join|apply|excite|us|company)/i.test(question))
       return `${possessive(job.company)} work lines up with what I want to build next${profile.headline ? ` as a ${profile.headline.replace(/^(a|an) /i, '')}` : ''}. ${profile.bio || ''}`.trim();
@@ -90,6 +90,27 @@ export async function draftAnswer(env, profile, email, job, question, short) {
         short ? 'Answer in one short line.' : 'Answer in 40-150 words.'
       } If it can't be answered truthfully from the profile, reply exactly: UNKNOWN`,
       400,
+    );
+    return t === 'UNKNOWN' || /^unknown\b/i.test(t) ? '' : t;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Factual questions (relocation, on-site, location, salary, start date…) are answered only from the
+ * developer's own facts and form answers — Claude picks the wording, never the fact. Without Claude,
+ * the form rules cover the common ones and anything else goes back to the developer.
+ */
+async function factualAnswer(env, profile, job, question, short) {
+  if (!aiEnabled(env) || !profile.facts) return '';
+  if (/gender|pronoun|\bsex\b|race|ethnic|hispanic|latin|veteran|disabilit|criminal|convict|felony/i.test(question)) return '';
+  try {
+    const t = await callClaude(
+      env,
+      `You fill in job application forms for a developer using ONLY the facts below. If the facts don't answer the question, reply exactly: UNKNOWN. Never guess.`,
+      `Facts about the developer:\n${profile.facts}\n\nCompany: ${job.company} — role: ${job.title}\n\nQuestion: "${question}"\n\n${short ? 'Answer in a few words (for a yes/no question, start with Yes or No).' : 'Answer in one or two sentences.'}`,
+      120,
     );
     return t === 'UNKNOWN' || /^unknown\b/i.test(t) ? '' : t;
   } catch {

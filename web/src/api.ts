@@ -48,6 +48,8 @@ export const api = {
   apply: (roleId: number) => call<Application>('POST', '/applications', { roleId }),
   answerApplication: (id: number, answers: { question: string; answer: string }[]) => call<Application>('POST', `/applications/${id}/answers`, { answers }),
   retryApplication: (id: number) => call<Application>('POST', `/applications/${id}/retry`),
+  answerAll: (answers: { question: string; answer: string }[]) => call<{ requeued: number }>('POST', '/applications/answers', { answers }),
+  sendApplication: (id: number, answers: { question: string; answer: string }[] = []) => call<Application>('POST', `/applications/${id}/send`, { answers }),
   selfApplied: (id: number) => call<void>('POST', `/applications/${id}/self`),
   cancelApplication: (id: number) => call<void>('DELETE', `/applications/${id}`),
 

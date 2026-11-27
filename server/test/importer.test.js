@@ -84,6 +84,20 @@ function client() {
   };
 }
 
+test('boards shared by several companies (VC portfolio, recruiters) are recognized', async () => {
+  const { looksShared } = await import('../src/importer.js');
+  const shared = [
+    { title: 'Staff Full Stack Engineer - Pay-i', description: 'About Pay-i. We are…' },
+    { title: 'Founding Engineer - Frontend - Oodle (Bangalore, India)', description: 'About Oodle AI…' },
+  ];
+  const own = [
+    { title: 'Software Engineer - Backend', description: 'About Tiny Rocket. About the role.' },
+    { title: 'Senior Engineer - Remote', description: 'About us.' },
+  ];
+  assert.equal(looksShared(shared, 'Spur'), true);
+  assert.equal(looksShared(own, 'Tiny Rocket'), false);
+});
+
 test('helpers: dev-role filter, skills, board links, html', () => {
   assert.ok(isDevRole('Founding Engineer'));
   assert.ok(isDevRole('Senior iOS Developer'));

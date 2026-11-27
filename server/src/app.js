@@ -7,7 +7,7 @@ import { createAuth } from './auth.js';
 import { createMailer } from './mail.js';
 import { siteDomain } from './rules.js';
 import { createImporter } from './importer.js';
-import { createApplier, applyReadiness } from './apply/agent.js';
+import { createApplier, applyReadiness, formDefaults } from './apply/agent.js';
 import { parseResume } from './resume-parse.js';
 
 const WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
@@ -101,7 +101,17 @@ export function createApp(
   const getProfile = (userId) => {
     const p = db.prepare('SELECT * FROM dev_profiles WHERE user_id = ?').get(userId);
     return p
-      ? { ...p, links: parse(p.links, {}), visible: !!p.visible, auto_apply: undefined, saved_answers: parse(p.saved_answers, []), resume_file: undefined, has_resume: !!p.resume_file }
+      ? {
+          ...p,
+          links: parse(p.links, {}),
+          visible: !!p.visible,
+          auto_apply: undefined,
+          review_first: !!p.review_first,
+          saved_answers: parse(p.saved_answers, []),
+          resume_file: undefined,
+          has_resume: !!p.resume_file,
+          form_defaults: formDefaults(p), // what HireMe will actually answer, defaults filled in
+        }
       : null;
   };
   const profileComplete = (p) => !!(p && p.name && p.headline && p.skills);
@@ -118,7 +128,10 @@ export function createApp(
       user: { ...u, isGuest: !!u.isGuest, pendingEmail: u.pendingEmail || '' },
       profile,
       profileComplete: profileComplete(profile),
-      counts: { needsYou: db.prepare("SELECT COUNT(*) n FROM applications WHERE dev_id = ? AND state = 'needs_you'").get(u.id).n },
+      counts: {
+        needsYou: db.prepare("SELECT COUNT(*) n FROM applications WHERE dev_id = ? AND state = 'needs_you'").get(u.id).n,
+        toReview: db.prepare("SELECT COUNT(*) n FROM applications WHERE dev_id = ? AND state = 'review'").get(u.id).n,
+      },
     };
     if (u.isAdmin) out.counts.openReports = db.prepare('SELECT COUNT(*) n FROM reports WHERE resolved = 0').get().n;
     res.json(out);
@@ -233,6 +246,11 @@ export function createApp(
       work_authorized: oneOf(b.work_authorized, ['yes', 'no'], ''),
       needs_sponsorship: oneOf(b.needs_sponsorship, ['yes', 'no'], ''),
       auto_apply: 1,
+      form_salary: str(b.form_salary, 80),
+      form_notice: str(b.form_notice, 60),
+      form_relocate: oneOf(b.form_relocate, ['yes', 'no'], ''),
+      form_onsite: oneOf(b.form_onsite, ['yes', 'no'], ''),
+      review_first: b.review_first ? 1 : 0,
       saved_answers: JSON.stringify(
         (Array.isArray(b.saved_answers) ? b.saved_answers : [])
           .map((a) => ({ question: str(a?.question, 300), answer: str(a?.answer, 2000) }))
@@ -242,13 +260,14 @@ export function createApp(
     };
     db.prepare(
       `INSERT INTO dev_profiles (user_id, name, headline, location, work_pref, years, skills, bio, experience, links, salary_min, visible,
-         phone, work_authorized, needs_sponsorship, auto_apply, saved_answers)
+         phone, work_authorized, needs_sponsorship, auto_apply, saved_answers, form_salary, form_notice, form_relocate, form_onsite, review_first)
        VALUES (@user_id, @name, @headline, @location, @work_pref, @years, @skills, @bio, @experience, @links, @salary_min, @visible,
-         @phone, @work_authorized, @needs_sponsorship, @auto_apply, @saved_answers)
+         @phone, @work_authorized, @needs_sponsorship, @auto_apply, @saved_answers, @form_salary, @form_notice, @form_relocate, @form_onsite, @review_first)
        ON CONFLICT (user_id) DO UPDATE SET name=@name, headline=@headline, location=@location, work_pref=@work_pref, years=@years,
          skills=@skills, bio=@bio, experience=@experience, links=@links, salary_min=@salary_min, visible=@visible,
          phone=@phone, work_authorized=@work_authorized, needs_sponsorship=@needs_sponsorship, auto_apply=@auto_apply,
-         saved_answers=@saved_answers, updated_at=datetime('now')`,
+         saved_answers=@saved_answers, form_salary=@form_salary, form_notice=@form_notice, form_relocate=@form_relocate,
+         form_onsite=@form_onsite, review_first=@review_first, updated_at=datetime('now')`,
     ).run({ user_id: req.user.id, ...p });
     const saved = getProfile(req.user.id);
     // Right swipes that were waiting on missing details go out now that they're filled in.
@@ -421,18 +440,75 @@ export function createApp(
     res.type('image/jpeg').sendFile(path.join(applier.shotsDir, a.screenshot));
   });
 
+  const normQ = (q) => q.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const givenAnswers = (body) =>
+    (Array.isArray(body?.answers) ? body.answers : [])
+      .map((x) => ({ question: str(x?.question, 300), answer: str(x?.answer, 2000) }))
+      .filter((x) => x.question && x.answer);
+
+  /**
+   * Saves answers for reuse on every form that asks the same question. Answers that are really profile
+   * facts (LinkedIn, GitHub, website, phone) go into the profile too, so differently worded questions get them.
+   */
+  function saveAnswers(userId, given) {
+    const p = db.prepare('SELECT saved_answers, links, phone FROM dev_profiles WHERE user_id = ?').get(userId);
+    if (!p) return;
+    const saved = parse(p.saved_answers, []).filter((s) => !given.some((g) => normQ(g.question) === normQ(s.question)));
+    const links = parse(p.links, {});
+    let phone = p.phone;
+    for (const g of given) {
+      const q = g.question.toLowerCase();
+      if (/linkedin/.test(q) && !links.linkedin) links.linkedin = cleanUrl(g.answer);
+      else if (/github/.test(q) && !links.github) links.github = cleanUrl(g.answer);
+      else if (/portfolio|website|personal site/.test(q) && !links.portfolio) links.portfolio = cleanUrl(g.answer);
+      else if (/phone|mobile/.test(q) && !phone) phone = g.answer;
+    }
+    db.prepare('UPDATE dev_profiles SET saved_answers = ?, links = ?, phone = ? WHERE user_id = ?').run(JSON.stringify([...given, ...saved].slice(0, 100)), JSON.stringify(links), phone, userId);
+  }
+
+  /** Applications waiting on questions that now all have saved answers go back in the queue. */
+  function requeueAnswered(userId) {
+    const saved = new Set(parse(db.prepare('SELECT saved_answers FROM dev_profiles WHERE user_id = ?').get(userId)?.saved_answers, []).map((a) => normQ(a.question)));
+    const waiting = db.prepare("SELECT * FROM applications WHERE dev_id = ? AND state = 'needs_you'").all(userId);
+    let n = 0;
+    for (const a of waiting) {
+      const missing = parse(a.missing, []);
+      if (missing.length && missing.every((q) => saved.has(normQ(q)))) {
+        applier.enqueue(userId, a.role_id);
+        n++;
+      }
+    }
+    return n;
+  }
+
   /** The developer answers the questions HireMe couldn't, then it tries again. Answers are saved for next time. */
   app.post('/api/applications/:id/answers', requireRole('dev'), (req, res) => {
     const a = ownApplication(req, res);
     if (!a) return;
-    const given = (Array.isArray(req.body?.answers) ? req.body.answers : [])
-      .map((x) => ({ question: str(x?.question, 300), answer: str(x?.answer, 2000) }))
-      .filter((x) => x.question && x.answer);
+    const given = givenAnswers(req.body);
     if (!given.length) return res.status(400).json({ error: 'Answer the questions first' });
-    const norm = (q) => q.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
-    const p = db.prepare('SELECT saved_answers FROM dev_profiles WHERE user_id = ?').get(req.user.id);
-    const saved = parse(p?.saved_answers, []).filter((s) => !given.some((g) => norm(g.question) === norm(s.question)));
-    db.prepare('UPDATE dev_profiles SET saved_answers = ? WHERE user_id = ?').run(JSON.stringify([...given, ...saved].slice(0, 100)), req.user.id);
+    saveAnswers(req.user.id, given);
+    const app1 = publicApplication(applier.enqueue(req.user.id, a.role_id));
+    requeueAnswered(req.user.id); // others waiting on the same questions go too
+    res.json(app1);
+  });
+
+  /** Answer each waiting question once; every application that was waiting on them goes back in the queue. */
+  app.post('/api/applications/answers', requireRole('dev'), (req, res) => {
+    const given = givenAnswers(req.body);
+    if (!given.length) return res.status(400).json({ error: 'Answer the questions first' });
+    saveAnswers(req.user.id, given);
+    res.json({ requeued: requeueAnswered(req.user.id) });
+  });
+
+  /** "Review before sending": the developer checked it (and maybe edited answers); send it for real. */
+  app.post('/api/applications/:id/send', requireRole('dev'), (req, res) => {
+    const a = ownApplication(req, res);
+    if (!a) return;
+    if (a.state !== 'review') return res.status(409).json({ error: 'That application isn’t waiting for review' });
+    const given = givenAnswers(req.body);
+    if (given.length) saveAnswers(req.user.id, given); // edits are used word for word when it's filled again
+    db.prepare('UPDATE applications SET approved = 1 WHERE id = ?').run(a.id);
     res.json(publicApplication(applier.enqueue(req.user.id, a.role_id)));
   });
 
@@ -453,7 +529,7 @@ export function createApp(
   app.delete('/api/applications/:id', requireRole('dev'), (req, res) => {
     const a = ownApplication(req, res);
     if (!a) return;
-    if (!['queued', 'needs_you', 'failed'].includes(a.state)) return res.status(409).json({ error: 'That application was already sent' });
+    if (!['queued', 'needs_you', 'failed', 'review'].includes(a.state)) return res.status(409).json({ error: 'That application was already sent' });
     db.prepare("UPDATE applications SET state = 'canceled', updated_at = datetime('now') WHERE id = ?").run(a.id);
     res.status(204).end();
   });

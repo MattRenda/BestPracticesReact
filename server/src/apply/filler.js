@@ -64,6 +64,9 @@
     { test: (q) => /^state$|state\/province|^province/.test(q), value: (p) => p.state },
     { test: (q) => /^city$/.test(q), value: (p) => p.city },
     { test: (q) => /^country$/.test(q), value: (p) => p.country || 'United States' },
+    // Yes/no about being somewhere: answered from where they're based, never guessed.
+    { test: (q) => /^(are|do) you (currently )?(located|based|living|live|reside|residing) (in|near|within)/.test(q), value: (p, q) => (livesIn(p, q) ? 'Yes' : 'No') },
+    { test: (q) => /in[- ]?(the )?office|on[- ]?site|onsite|in[- ]person|hybrid|commut|days (a|per|each) week/.test(q), value: (p) => yn(p.openToOnsite) },
     { test: (q) => /location|where are you (based|located)|current (city|address)|^address|city, state/.test(q), value: (p) => p.location },
     { test: (q) => /current (company|employer)|^(company|employer)( name)?$|most recent (company|employer)/.test(q), value: (p) => p.currentCompany },
     { test: (q) => /current (title|role|position)|^(job )?title$|most recent (title|role)/.test(q), value: (p) => p.currentTitle },
@@ -72,14 +75,31 @@
     { test: (q) => /relocat/.test(q), value: (p) => yn(p.willingToRelocate) },
     { test: (q) => /years.{0,30}experience|experience.{0,15}years/.test(q), value: (p) => p.yearsExperience },
     { test: (q) => /salary|compensation|desired pay/.test(q), value: (p) => p.salaryExpectation },
-    { test: (q) => /notice period|start date|when can you start|available to start/.test(q), value: (p) => p.noticePeriod },
+    { test: (q, el) => el.type === 'date' && /start|available|earliest/.test(q), value: (p) => p.startDate },
+    { test: (q) => /notice period|start date|when can you start|available to start|earliest (start|date)/.test(q), value: (p) => p.noticePeriod },
     { test: (q) => /how did you (hear|find|learn)|where did you (hear|find)/.test(q), value: (p) => p.referralSource || 'Job board' },
     { test: (q) => /gender|\bsex\b/.test(q), value: (p) => p.eeoGender || 'decline', eeo: true },
     { test: (q) => /race|ethnic|hispanic|latino/.test(q), value: (p) => p.eeoRace || 'decline', eeo: true },
     { test: (q) => /veteran/.test(q), value: (p) => p.eeoVeteran || 'decline', eeo: true },
     { test: (q) => /disabilit/.test(q), value: (p) => p.eeoDisability || 'decline', eeo: true },
   ];
-  const ruleFor = (q, el) => RULES.find((r) => r.test(q, el));
+  const ruleFor = (q, el) => {
+    const r = RULES.find((x) => x.test(q, el));
+    return r && { ...r, value: (p) => r.value(p, q) };
+  };
+
+  const US_STATES = { al: 'alabama', ak: 'alaska', az: 'arizona', ar: 'arkansas', ca: 'california', co: 'colorado', ct: 'connecticut', de: 'delaware', fl: 'florida', ga: 'georgia', hi: 'hawaii', id: 'idaho', il: 'illinois', in: 'indiana', ia: 'iowa', ks: 'kansas', ky: 'kentucky', la: 'louisiana', me: 'maine', md: 'maryland', ma: 'massachusetts', mi: 'michigan', mn: 'minnesota', ms: 'mississippi', mo: 'missouri', mt: 'montana', ne: 'nebraska', nv: 'nevada', nh: 'new hampshire', nj: 'new jersey', nm: 'new mexico', ny: 'new york', nc: 'north carolina', nd: 'north dakota', oh: 'ohio', ok: 'oklahoma', or: 'oregon', pa: 'pennsylvania', ri: 'rhode island', sc: 'south carolina', sd: 'south dakota', tn: 'tennessee', tx: 'texas', ut: 'utah', vt: 'vermont', va: 'virginia', wa: 'washington', wv: 'west virginia', wi: 'wisconsin', wy: 'wyoming' };
+  /** "Are you located in the Bay Area / California / the US?" against where they're based. */
+  function livesIn(p, q) {
+    const city = String(p.city || '').toLowerCase();
+    const st = String(p.state || '').toLowerCase();
+    const stateName = US_STATES[st] || (Object.values(US_STATES).includes(st) ? st : '');
+    if (city && q.includes(city)) return true;
+    if (stateName && q.includes(stateName)) return true;
+    if (st.length === 2 && new RegExp(`\\b${st}\\b`).test(q.replace(/\b(in|or)\b/g, ''))) return true;
+    if (/\b(the )?(us|u\.s\.?|usa|united states|america)\b/.test(q) && (p.country || 'United States') === 'United States' && (stateName || st)) return true;
+    return false;
+  }
 
   // Consent boxes the applicant agrees to by using auto-apply.
   const CONSENT = /i (agree|acknowledge|certify|consent|confirm|have read)|privacy (policy|notice)|terms|accurate and complete/i;
