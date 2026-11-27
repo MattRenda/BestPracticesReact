@@ -12,33 +12,25 @@ function leaveHomeFor(hash: string) {
 /** The home page. Signed-out visitors start here; signed-in people can come back to it (#/home). */
 export function Landing({ me, onStart }: { me?: Me; onStart: () => void }) {
   const user = me?.user ?? null
-  const [starting, setStarting] = useState(false)
-  const [startError, setStartError] = useState('')
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
-  // No sign-up form: a guest account starts quietly; an email is asked for when they want to apply.
-  async function start() {
-    setStarting(true)
-    setStartError('')
+  // One way in for everyone. Typing an email doesn't stop you at "check your inbox": a guest session
+  // starts and you go straight to the questions, while the link (confirm, or sign back in if you've
+  // been here before) waits in your inbox. Google signs you in on the spot.
+  async function continueWithEmail(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
     try {
       await api.startGuest()
+      await api.startSignIn(email.trim())
       leaveHomeFor('#/profile')
       onStart()
-    } catch (e) {
-      setStartError((e as Error).message)
-      setStarting(false)
-    }
-  }
-  const [email, setEmail] = useState('')
-  const [state, setState] = useState<{ kind: 'idle' | 'sending' | 'sent' | 'error'; msg?: string; devLink?: string }>({ kind: 'idle' })
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    setState({ kind: 'sending' })
-    try {
-      const r = await api.startSignIn(email.trim())
-      setState({ kind: 'sent', devLink: r.devLink })
     } catch (err) {
-      setState({ kind: 'error', msg: (err as Error).message })
+      setError((err as Error).message)
+      setBusy(false)
     }
   }
 
@@ -66,35 +58,6 @@ export function Landing({ me, onStart }: { me?: Me; onStart: () => void }) {
           </h1>
           <p className="lede">
             Engineering jobs at small startups, one card at a time. Swipe right and HireMe fills out the application from your profile and sends it. Free.
-          </p>
-          <div className="hero-cta">
-            {user ? (
-              <button type="button" className="btn primary big" onClick={() => leaveHomeFor('#/discover')}>
-                {me?.profileComplete ? 'Keep swiping →' : 'Continue setting up →'}
-              </button>
-            ) : (
-              <>
-                <button type="button" className="btn primary big" onClick={start} disabled={starting}>
-                  {starting ? 'One sec…' : 'Find a startup job →'}
-                </button>
-                <span className="muted">A few quick taps. No forms.</span>
-              </>
-            )}
-            {startError && <p className="error">{startError}</p>}
-          </div>
-          <ul className="promises">
-            <li>
-              <strong>Startups only.</strong> Every company has 50 people or fewer. No big companies, ever.
-            </li>
-            <li>
-              <strong>No recruiters.</strong> Roles come straight from startups’ own job boards, and staffing agencies are filtered out.
-            </li>
-            <li>
-              <strong>You stay in charge.</strong> HireMe asks you about anything it can’t answer truthfully, like visas or salary, and shows you exactly what it sent.
-            </li>
-          </ul>
-          <p className="legal-links">
-            <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
           </p>
         </div>
 
@@ -125,50 +88,41 @@ export function Landing({ me, onStart }: { me?: Me; onStart: () => void }) {
             </button>
           </div>
         ) : (
-        <form className="signin-card" onSubmit={submit}>
-          {state.kind === 'sent' ? (
-            <div className="sent">
-              <h2>Check your email</h2>
-              <p>
-                We sent a sign-in link to <strong>{email}</strong>. It works once and expires in 20 minutes.
+          <form className="signin-card" onSubmit={continueWithEmail}>
+            <h2 className="signin-title">Get started</h2>
+            <p className="muted small">New or coming back, it’s the same button. No passwords.</p>
+            <GoogleButton divider="after" onError={setError} />
+            <label className="field">
+              <span className="sr-only">Email</span>
+              <input type="email" required autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </label>
+            {error && (
+              <p className="error" role="alert">
+                {error}
               </p>
-              {state.devLink && (
-                <p className="dev-link">
-                  Email isn’t set up on this server, so here’s the link: <a href={state.devLink}>Sign in</a>
-                </p>
-              )}
-              <button type="button" className="link-btn" onClick={() => setState({ kind: 'idle' })}>
-                Use a different email
-              </button>
-            </div>
-          ) : (
-            <>
-              <h2 className="signin-title">Already use HireMe?</h2>
-              <label className="field">
-                <span>Email</span>
-                <input
-                  type="email"
-                  required
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </label>
-              {state.kind === 'error' && (
-                <p className="error" role="alert">
-                  {state.msg}
-                </p>
-              )}
-              <button className="btn primary wide" disabled={state.kind === 'sending' || !email.trim()}>
-                {state.kind === 'sending' ? 'Sending…' : 'Email me a sign-in link'}
-              </button>
-              <GoogleButton onError={(msg) => setState({ kind: 'error', msg })} />
-              <p className="fine">No passwords. New here? Tap “Find a startup job”.</p>
-            </>
-          )}
-        </form>
+            )}
+            <button className="btn primary wide" disabled={busy || !email.trim()}>
+              {busy ? 'One sec…' : 'Continue with email'}
+            </button>
+          </form>
         )}
+
+        <div className="hero-more">
+          <ul className="promises">
+            <li>
+              <strong>Startups only.</strong> Every company has 50 people or fewer. No big companies, ever.
+            </li>
+            <li>
+              <strong>No recruiters.</strong> Roles come straight from startups’ own job boards, and staffing agencies are filtered out.
+            </li>
+            <li>
+              <strong>You stay in charge.</strong> HireMe asks you about anything it can’t answer truthfully, like visas or salary, and shows you exactly what it sent.
+            </li>
+          </ul>
+          <p className="legal-links">
+            <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+          </p>
+        </div>
       </section>
     </div>
   )

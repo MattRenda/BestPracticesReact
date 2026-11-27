@@ -79,7 +79,7 @@ export default function App() {
   // Old links to #/matches go to Applications.
   const page = route.page === 'matches' ? 'applications' : tabs.includes(route.page) ? route.page : 'discover'
   // New people get to know HireMe a few taps at a time before anything else.
-  if (!me.profileComplete && page !== 'admin') return <Onboarding isGuest={user.isGuest} email={user.email} onDone={refresh} />
+  if (!me.profileComplete && page !== 'admin') return <Onboarding isGuest={user.isGuest} email={user.email} pendingEmail={user.pendingEmail} onDone={refresh} />
 
   return (
     <div className="shell">

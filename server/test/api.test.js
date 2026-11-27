@@ -209,6 +209,7 @@ test('guests who sign in to an existing account keep that account’s profile an
   await g.req('PUT', '/profile', { ...DEV_PROFILE, name: 'Guest Name' });
   await g.req('POST', `/deck/${role.rid}`, { liked: true });
   const start = await g.req('POST', '/auth/start', { email: 'returning@example.com' });
+  assert.equal(sent.at(-1).subject, 'Your HireMe sign-in link', 'a returning person gets a sign-in email, not a confirm-your-email one');
   const v = await g.req('POST', '/auth/verify', { token: start.body.devLink.split('/signin/')[1] });
   assert.deepEqual(v.body.sent, ['Merge Labs'], 'the account already has what applications need');
   const me = (await g.req('GET', '/me')).body;

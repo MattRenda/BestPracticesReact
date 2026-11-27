@@ -29,7 +29,16 @@ function loadGis() {
 }
 
 /** "Sign in with Google". Shows nothing until the server has a Google client ID configured. */
-export function GoogleButton({ onError, before }: { onError: (msg: string) => void; before?: () => Promise<string | void> }) {
+export function GoogleButton({
+  onError,
+  before,
+  divider = 'before',
+}: {
+  onError: (msg: string) => void
+  before?: () => Promise<string | void>
+  /** Where the "or" line goes, relative to the button. */
+  divider?: 'before' | 'after'
+}) {
   const box = useRef<HTMLDivElement>(null)
   const latest = useRef({ onError, before })
   const [clientId, setClientId] = useState<string | null>(null)
@@ -86,12 +95,16 @@ export function GoogleButton({ onError, before }: { onError: (msg: string) => vo
   }, [clientId])
 
   if (!clientId) return null
+  const or = (
+    <div className="or" role="separator">
+      <span>or</span>
+    </div>
+  )
   return (
     <>
-      <div className="or" role="separator">
-        <span>or</span>
-      </div>
+      {divider === 'before' && or}
       <div ref={box} className="google-btn" aria-busy={busy} />
+      {divider === 'after' && or}
     </>
   )
 }

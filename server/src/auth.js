@@ -126,6 +126,7 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
 
       const token = randomBytes(32).toString('base64url');
       db.prepare("DELETE FROM login_tokens WHERE expires_at < datetime('now')").run();
+      const existing = db.prepare('SELECT 1 FROM users WHERE email = ? AND is_guest = 0').get(email);
       // A guest confirming their email gets a day: their applications wait on this link.
       const minutes = guestOf(req) ? 24 * 60 : LINK_MINUTES;
       db.prepare(`INSERT INTO login_tokens (hash, email, intent, guest_id, expires_at) VALUES (?, ?, '', ?, datetime('now', '+${minutes} minutes'))`).run(
@@ -138,8 +139,10 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
       try {
         await mailer.send({
           to: email,
-          subject: guestOf(req) ? 'Confirm your email to start applying' : 'Your HireMe sign-in link',
-          text: guestOf(req)
+          subject: guestOf(req) && !existing ? 'Confirm your email to start applying' : 'Your HireMe sign-in link',
+          text: guestOf(req) && existing
+            ? `Tap this link to sign back in to HireMe. Your profile is right where you left it, and anything you swiped on just now comes with you:\n\n${link}\n\nIt works once and expires in 24 hours. If this wasn’t you, ignore this email.`
+            : guestOf(req)
             ? `Tap this link to confirm your email. HireMe then sends the applications for the jobs you swipe right on, with this email as your contact:\n\n${link}\n\nIt works once and expires in 24 hours. If this wasn’t you, ignore this email and nothing will be sent.`
             : `Open this link to sign in to HireMe:\n\n${link}\n\nIt works once and expires in ${LINK_MINUTES} minutes. If you didn’t ask for it, ignore this email.`,
         });

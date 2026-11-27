@@ -101,8 +101,11 @@ function kindsFrom(text: string) {
   return out.slice(0, 3)
 }
 
-export function Onboarding({ isGuest, email, onDone }: { isGuest: boolean; email: string; onDone: () => void }) {
-  const [d, setD] = useState<Draft>(loadDraft)
+export function Onboarding({ isGuest, email, pendingEmail, onDone }: { isGuest: boolean; email: string; pendingEmail: string; onDone: () => void }) {
+  const [d, setD] = useState<Draft>(() => {
+    const draft = loadDraft()
+    return { ...draft, email: draft.email || pendingEmail }
+  })
   const [step, setStep] = useState(0)
   const [reading, setReading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -211,7 +214,8 @@ export function Onboarding({ isGuest, email, onDone }: { isGuest: boolean; email
       if (isGuest && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.email.trim())) throw new Error('Add your email — startups reply to it.')
       const problem = await saveProfile()
       if (problem) throw new Error(problem)
-      if (isGuest) await api.startSignIn(d.email.trim())
+      // A new link only if the address changed since the one sent from the home page
+      if (isGuest && d.email.trim().toLowerCase() !== pendingEmail.toLowerCase()) await api.startSignIn(d.email.trim())
       location.hash = '#/discover'
       onDone()
     } catch (err) {
@@ -428,7 +432,7 @@ export function Onboarding({ isGuest, email, onDone }: { isGuest: boolean; email
           <img src="/hireme.svg" alt="" width={28} height={28} />
           <span>HireMe</span>
         </a>
-        {isGuest && (
+        {isGuest && !pendingEmail && (
           <button type="button" className="link-btn" onClick={() => setSignIn(true)}>
             Have an account? Sign in
           </button>
@@ -437,6 +441,11 @@ export function Onboarding({ isGuest, email, onDone }: { isGuest: boolean; email
       <div className="ob-progress" aria-hidden="true">
         <span style={{ width: `${((step + 1) / (steps.length + 1)) * 100}%` }} />
       </div>
+      {isGuest && pendingEmail && step === 0 && (
+        <p className="ob-note">
+          We emailed <strong>{pendingEmail}</strong> a link. Tap it whenever: it confirms your email, or signs you straight back in if you’ve used HireMe before.
+        </p>
+      )}
       <form
         className="ob-step"
         key={current}
