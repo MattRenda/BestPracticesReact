@@ -229,6 +229,12 @@ export function openDb(file = DB_PATH) {
   // 'review': filled and waiting for the developer to say send (review_first). approved = they said send.
   addColumns('applications', [['approved', 'INTEGER NOT NULL DEFAULT 0']]);
 
+  // One-time: retry applications that stopped to ask, now that HireMe answers most extra questions itself.
+  if (db.prepare('PRAGMA user_version').get().user_version < 1) {
+    db.exec("UPDATE applications SET state = 'queued', error = '', missing = '[]', updated_at = datetime('now') WHERE state = 'needs_you'");
+    db.exec('PRAGMA user_version = 1');
+  }
+
   // HireMe is for developers only now: founder accounts (and accounts that never picked) become developers.
   db.exec("UPDATE users SET role = 'dev' WHERE role != 'dev'");
 

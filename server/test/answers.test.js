@@ -34,7 +34,8 @@ test('skills: yes when the resume shows it or something close; honest otherwise'
 test('the few things that stay strictly accurate', () => {
   assert.equal(ask('Are you legally authorized to work in the United States?', YN), 'Yes');
   assert.equal(ask('Will you now or in the future require visa sponsorship?', YN), 'No');
-  assert.equal(ask('Are you a US citizen?', YN), '', 'not on the profile: asks instead of guessing');
+  assert.equal(ask('Are you a US citizen?', YN), '', 'only what they told HireMe: authorized, not citizenship');
+  assert.equal(ask('What is your US citizenship status?'), "Authorized to work in the US; I don't need sponsorship");
   assert.equal(ask('Do you have a Bachelor’s degree in Computer Science?', YN), 'Yes', 'from the education on the resume');
   assert.equal(ask('Do you hold an active security clearance?', YN), 'No');
   assert.equal(ask('Have you ever been convicted of a felony?', YN), '');
@@ -50,6 +51,6 @@ test('everything else gets a positive, grounded answer', () => {
   assert.match(why, /^Acme's work lines up/);
   assert.match(why, /10 years of experience, working mostly with React/);
   assert.ok(why.length < 500, 'not over the top');
-  assert.match(ask('Tell us about a project you are proud of', [], false), /Build and maintain the DMV website/);
+  assert.match(ask('Tell us about a project you are proud of', [], false), /Right now I build and maintain the DMV website/);
   assert.equal(ask('Which team are you most interested in?', ['Select...', 'Platform', 'Growth']), 'Platform');
 });

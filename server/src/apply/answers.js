@@ -85,21 +85,33 @@ function aboutMe(p, job) {
     .split('\n')
     .map((l) => l.replace(/^[-•*]\s*/, '').trim())
     .find((l) => l.length > 30 && /^[A-Z]/.test(l) && !/[—–|]/.test(l));
-  const parts = [`I'm a ${headline.toLowerCase().startsWith('senior') ? headline.charAt(0).toLowerCase() + headline.slice(1) : headline}${p.years ? ` with ${p.years} years of experience` : ''}${lead ? `, working mostly with ${lead}` : ''}.`];
+  const title = /^[A-Z][a-z]+( [A-Z][a-z]+)*$/.test(headline) ? headline.toLowerCase() : headline;
+  const parts = [`I'm a ${title}${p.years ? ` with ${p.years} years of experience` : ''}${lead ? `, working mostly with ${lead}` : ''}.`];
   if (p.bio) parts.push(clean(p.bio).split(/(?<=\.)\s/).slice(0, 2).join(' '));
-  else if (firstBullet) parts.push(`Recently: ${firstBullet.replace(/\.?$/, '.')}`);
+  else if (firstBullet) {
+    const verb = firstBullet.split(' ')[0];
+    const rest = firstBullet.charAt(0).toLowerCase() + firstBullet.slice(1).replace(/\.?$/, '.');
+    parts.push(/ed$|^(Led|Built|Ran|Wrote|Made|Took|Grew|Drove|Won)$/.test(verb) ? `Recently I ${rest}` : `Right now I ${rest}`);
+  }
   return parts.join(' ');
 }
 
 function openEnded(question, p, job) {
   const q = lc(question);
   const company = job?.company || 'your team';
-  if (/why.{0,40}(interest|want|join|apply|excite|us|company|role|position|here)|what (excites|interests|draws) you/.test(q))
+  if (/\bai\b|llm|chatgpt|copilot|claude|gpt|cursor|automation/.test(q))
+    return `I use AI assistants as part of everyday work: drafting tests and boilerplate, exploring unfamiliar APIs, and reviewing my own changes before a PR. I treat what they produce as a first draft and verify it, which lets me spend more time on design and less on busywork.`;
+  if (/learn(ed|ing)? (recently|lately)|recently learned|currently learning|what are you learning|teach(ing)? yourself/.test(q)) {
+    const skills = String(p.skills || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const jobSkill = extractSkills(`${job?.title} ${job?.description}`, 6).find((k) => !lc(p.skills).includes(lc(k)));
+    return `Lately I've been going deeper on AI-assisted development and ${jobSkill || skills[0] || 'modern web tooling'}, and folding what I learn into real work right away. It's changed how quickly I can prototype and ship.`;
+  }
+  if (/anything else|additional (info|information|comments)|cover letter|note to/.test(q)) return `Thanks for considering my application. I'd be glad to talk about how I can help ${company}.`;
+  if (/why.{0,40}(interest|want|join|apply|excite|us|company|role|position|here)|excit|interest(s|ed) you|draws? you|appeals? to you|motivat|attract/.test(q))
     return `${company}'s work lines up with what I want to build next, and a small team where I can own things end to end is exactly where I do my best work. ${aboutMe(p, job)}`;
   if (/project|proud|accomplish|built|challenge|problem you solved|example of/.test(q))
     return `${aboutMe(p, job)} I like shipping in small, steady steps, measuring what changed, and keeping the codebase easy for the next person.`;
   if (/salary|compensation/.test(q)) return '';
-  if (/anything else|additional (info|information|comments)|cover letter|note to/.test(q)) return `Thanks for considering my application. I'd be glad to talk about how I can help ${company}.`;
   return aboutMe(p, job);
 }
 
@@ -118,7 +130,12 @@ export function autoAnswer({ question, options = [], short = true, profile: p, d
   // Strictly accurate
   if (/authori[sz]|eligible to work|legally (able|permitted)|right to work/.test(q)) return p.work_authorized ? yes(p.work_authorized === 'yes') : '';
   if (/sponsor|visa/.test(q)) return p.needs_sponsorship ? yes(p.needs_sponsorship === 'yes') : '';
-  if (/citizen|green card|permanent resident|immigration/.test(q)) return '';
+  if (/citizen|green card|permanent resident|immigration/.test(q)) {
+    // Say only what they've told HireMe: authorized, and whether they need sponsorship.
+    if (p.work_authorized !== 'yes' || p.needs_sponsorship !== 'no') return '';
+    if (!options.length) return "Authorized to work in the US; I don't need sponsorship";
+    return options.find((o) => /authori[sz]ed.*(without|no|not).*sponsor|do(es)? not (require|need) sponsorship|citizen or (permanent|green)|(permanent|green card).{0,20}or.{0,20}citizen/i.test(o)) || '';
+  }
   if (/criminal|convict|felony|misdemeanor/.test(q)) return options.length ? options.find((o) => DECLINE_OPT.test(o)) || '' : '';
   if (/clearance/.test(q)) return options.length ? choose(options, 'no', { positive: false }) || choose(options, 'none', { positive: false }) || '' : 'None';
   if (/\b(bachelor|master|ph\.?d|degree|diploma|graduat|gpa)\b/.test(q)) {
