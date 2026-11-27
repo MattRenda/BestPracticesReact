@@ -190,7 +190,9 @@ a.btn { display: inline-block; text-decoration: none; text-align: center; }
 .card-company { font-size: var(--t-3xl); font-weight: 800; letter-spacing: -0.03em; line-height: 1; overflow-wrap: anywhere; }
 .card-title { font-family: var(--display); font-size: var(--t-xl); font-weight: 500; margin: 8px 0 6px; line-height: 1.2; }
 .card-meta { font-size: var(--t-sm); color: var(--soil); margin: 0 0 14px; white-space: pre-wrap; }
-.card-body { flex: 1; overflow-y: auto; border-top: 1px solid var(--rule); padding-top: 12px; font-size: 0.95rem; color: var(--ink); mask-image: linear-gradient(to bottom, #000 85%, transparent); }
+/* The body scrolls, so it's its own touch-action root: without pan-y here the browser takes horizontal drags
+   that start in it (pointercancel) and the card won't move. Vertical drags still scroll the description. */
+.card-body { flex: 1; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; border-top: 1px solid var(--rule); padding-top: 12px; font-size: 0.95rem; color: var(--ink); mask-image: linear-gradient(to bottom, #000 85%, transparent); }
 .card-body p { margin: 0 0 10px; white-space: pre-line; max-width: 70ch; }
 .card-link { font-size: var(--t-sm); font-weight: 700; color: var(--moss); margin-top: 10px; align-self: flex-start; }
 .stamp {
