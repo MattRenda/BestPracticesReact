@@ -195,7 +195,7 @@ a.btn { display: inline-block; text-decoration: none; text-align: center; }
 /* Nothing scrolls on the card (a swipe works from anywhere); the full description opens in a sheet. */
 .card-body { flex: 1; min-height: 0; overflow: hidden; border-top: 1px solid var(--rule); padding-top: 12px; font-size: 0.95rem; color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; }
 .card-body .chips { overflow: hidden; max-height: 7.5em; }
-.details-btn { margin-top: auto; }
+.details-btn { align-self: flex-start; margin-top: 10px; flex: none; }
 .details-sheet { padding: 22px 22px calc(18px + env(safe-area-inset-bottom)); overflow-y: auto; max-height: 90vh; }
 .details-sheet p { white-space: pre-line; }
 .card-body p { margin: 0 0 10px; white-space: pre-line; max-width: 70ch; }

@@ -146,16 +146,19 @@ function RoleCardView({ c, onReported }: { c: RoleCard; onReported: () => void }
           {s.location && ` · ${s.location}`}
         </p>
         <p className="card-title">{c.title}</p>
-        <p className="card-meta">{[WORK_LABEL[c.work_mode], c.location, pay, c.equity && `${c.equity} equity`].filter(Boolean).join('  ·  ')}</p>
+        <p className="card-meta">
+          {[WORK_LABEL[c.work_mode], c.location?.toLowerCase() !== WORK_LABEL[c.work_mode]?.toLowerCase() && c.location, pay, c.equity && `${c.equity} equity`].filter(Boolean).join('  ·  ')}
+        </p>
       </header>
       {/* No scrolling text on the card, so a swipe works from anywhere; the full description is a tap away. */}
       <div className="card-body">
         {s.one_liner && <p className="one-liner">{s.one_liner}</p>}
         <Chips list={c.skills} highlight={c.sharedSkills} />
-        <button className="btn ghost small details-btn" onClick={() => setDetails(true)}>
-          Show details
-        </button>
       </div>
+      {/* Outside the clipped body so it never gets cut off on a short screen. */}
+      <button className="btn ghost small details-btn" onClick={() => setDetails(true)}>
+        Show details
+      </button>
       <Sheet open={details} onClose={() => setDetails(false)} label={`${c.title} at ${s.name}`}>
         {details && (
           <div className="details-sheet">

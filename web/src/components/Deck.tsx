@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent as RMouseEvent, type PointerEvent as RPointerEvent, type ReactNode } from 'react'
 
 const THRESHOLD = 110
 /** How steep a swipe can be and still count: |dy| up to 1.8 × |dx| (about 60° off horizontal). */
 const MAX_SLOPE = 1.8
+/** Movement (px) before a touch counts as a drag rather than a tap. */
+const TAP_SLOP = 6
 
 type Props<T extends { id: number }> = {
   items: T[] | null
@@ -25,7 +27,7 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
   const [fling, setFling] = useState<'left' | 'right' | null>(null)
   // The card owns every touch (touch-action: none) so a swipe works the same from any part of it.
   // It only ever moves sideways, following the finger's horizontal movement even on a diagonal.
-  const start = useRef({ x: 0, y: 0, t: 0, dy: 0 })
+  const start = useRef({ x: 0, y: 0, t: 0, dy: 0, moved: false, id: 0 })
 
   const visible = items?.filter((i) => !gone.has(i.id)) ?? null
   const top = visible?.[0]
@@ -99,17 +101,24 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
     return () => window.removeEventListener('keydown', onKey)
   }, [disabled])
 
+  // A drag can start anywhere on the card, links and buttons included: it only becomes a drag after it
+  // moves a few pixels, and the click that would follow a drag is swallowed. A plain tap still taps.
   function onDown(e: RPointerEvent) {
-    // Taps on links and buttons, and anything in a sheet opened from the card, aren't drags.
-    if (fling || disabled || (e.target as HTMLElement).closest('a, button, dialog')) return
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    start.current = { x: e.clientX, y: e.clientY, t: performance.now(), dy: 0 }
+    if (fling || disabled || (e.target as HTMLElement).closest('dialog')) return
+    start.current = { x: e.clientX, y: e.clientY, t: performance.now(), dy: 0, moved: false, id: e.pointerId }
     setDrag({ x: 0, active: true })
   }
   function onMove(e: RPointerEvent) {
     if (!drag.active) return
-    start.current.dy = e.clientY - start.current.y
-    setDrag({ x: e.clientX - start.current.x, active: true })
+    const s = start.current
+    const dx = e.clientX - s.x
+    s.dy = e.clientY - s.y
+    if (!s.moved) {
+      if (Math.hypot(dx, s.dy) < TAP_SLOP) return
+      s.moved = true
+      ;(e.currentTarget as HTMLElement).setPointerCapture(s.id)
+    }
+    setDrag({ x: dx, active: true })
   }
   function onUp() {
     if (!drag.active) return
@@ -117,8 +126,14 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
     const v = dx / Math.max(1, performance.now() - start.current.t)
     // Diagonal swipes count: anything up to about 60° off horizontal, up or down.
     const sideways = Math.abs(start.current.dy) <= dx * MAX_SLOPE
-    if (sideways && (dx > THRESHOLD || (v > 0.5 && dx > 40))) swipe(drag.x > 0 ? 'right' : 'left')
+    if (start.current.moved && sideways && (dx > THRESHOLD || (v > 0.5 && dx > 40))) swipe(drag.x > 0 ? 'right' : 'left')
     else setDrag({ x: 0, active: false })
+  }
+  function onClickCapture(e: RMouseEvent) {
+    if (start.current.moved) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
   }
 
   const x = fling ? (fling === 'right' ? 1 : -1) * (window.innerWidth + 200) : drag.x
@@ -147,6 +162,7 @@ export function Deck<T extends { id: number }>({ items, onSwipe, onUndo, renderC
               onPointerMove={onMove}
               onPointerUp={onUp}
               onPointerCancel={() => setDrag({ x: 0, active: false })}
+              onClickCapture={onClickCapture}
               aria-label={cardLabel(top)}
             >
               <span className="stamp stamp-apply" style={{ opacity: yesOpacity }} aria-hidden="true">
