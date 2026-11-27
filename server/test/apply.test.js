@@ -168,16 +168,16 @@ test('CAPTCHA and unanswerable questions come back to the developer; answers are
   list = (await dev.req('GET', '/applications')).body;
   const ex = list.find((x) => x.role_id === roleId('?extra=1'));
   assert.equal(ex.state, 'needs_you');
-  assert.deepEqual(ex.missing, ['What is your security clearance level?']);
+  assert.deepEqual(ex.missing, ['What is your US citizenship status?']);
 
-  const again = (await dev.req('POST', `/applications/${ex.id}/answers`, { answers: [{ question: ex.missing[0], answer: 'None' }] })).body;
+  const again = (await dev.req('POST', `/applications/${ex.id}/answers`, { answers: [{ question: ex.missing[0], answer: 'US citizen' }] })).body;
   assert.equal(again.state, 'queued');
   await applier.tick();
   list = (await dev.req('GET', '/applications')).body;
   assert.equal(list.find((x) => x.id === ex.id).state, 'submitted');
-  assert.equal(submissions.at(-1).clearance, 'None');
+  assert.equal(submissions.at(-1).clearance, 'US citizen');
   const profile = (await dev.req('GET', '/profile')).body;
-  assert.equal(profile.saved_answers[0].answer, 'None', 'saved for next time');
+  assert.equal(profile.saved_answers[0].answer, 'US citizen', 'saved for next time');
 });
 
 test('Ashby-style invisible reCAPTCHA doesn’t stop an application', async (t) => {
@@ -211,7 +211,7 @@ test('common questions are answered from the profile and its form defaults; one 
   await applier.tick();
   list = (await dev.req('GET', '/applications')).body.filter((x) => x.state === 'needs_you');
   assert.equal(list.length, 2);
-  const r = (await dev.req('POST', '/applications/answers', { answers: [{ question: list[0].missing[0], answer: 'None' }] })).body;
+  const r = (await dev.req('POST', '/applications/answers', { answers: [{ question: list[0].missing[0], answer: 'US citizen' }] })).body;
   assert.equal(r.requeued, 2);
   await applier.tick();
   list = (await dev.req('GET', '/applications')).body;

@@ -336,7 +336,7 @@ function ApplyingSection({
   return (
     <fieldset className="group">
       <legend>Applying for you</legend>
-      <p className="group-note">When you swipe right, HireMe fills out and sends the startup’s application with these. It asks you about anything it can’t answer truthfully.</p>
+      <p className="group-note">When you swipe right, HireMe fills out and sends the startup’s application with these. Extra questions get positive answers grounded in your resume. Work authorization, sponsorship, degrees and similar facts are always answered accurately.</p>
       <label className="toggle">
         <input type="checkbox" checked={!!p.review_first} onChange={(e) => update({ review_first: e.target.checked })} />
         <span className="toggle-track" aria-hidden="true" />
@@ -413,7 +413,7 @@ function FormAnswers({ p, update }: { p: DevProfile; update: (patch: Partial<Dev
     <label className="field">
       <span>{label}</span>
       <select value={p[k] ?? ''} onChange={(e) => update({ [k]: e.target.value as '' | 'yes' | 'no' })}>
-        <option value="">Automatic ({auto === 'yes' ? 'Yes' : 'No'}, from how you like to work)</option>
+        <option value="">Automatic ({auto === 'yes' ? 'Yes' : 'No'})</option>
         <option value="yes">Yes</option>
         <option value="no">No</option>
       </select>

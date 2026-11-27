@@ -116,7 +116,7 @@ export function Landing({ me, onStart }: { me?: Me; onStart: () => void }) {
               <strong>No recruiters.</strong> Roles come straight from startups’ own job boards, and staffing agencies are filtered out.
             </li>
             <li>
-              <strong>You stay in charge.</strong> HireMe asks you about anything it can’t answer truthfully, like visas or salary, and shows you exactly what it sent.
+              <strong>Swipe and done.</strong> HireMe answers the extra questions from your resume, positive but never made up, and shows you exactly what it sent.
             </li>
           </ul>
           <p className="legal-links">

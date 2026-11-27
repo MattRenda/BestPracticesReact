@@ -65,7 +65,7 @@
     { test: (q) => /^city$/.test(q), value: (p) => p.city },
     { test: (q) => /^country$/.test(q), value: (p) => p.country || 'United States' },
     // Yes/no about being somewhere: answered from where they're based, never guessed.
-    { test: (q) => /^(are|do) you (currently )?(located|based|living|live|reside|residing) (in|near|within)/.test(q), value: (p, q) => (livesIn(p, q) ? 'Yes' : 'No') },
+    { test: (q, el) => (el.tagName === 'SELECT' || el.type === 'radio') && /^(are|do) you (currently )?(located|based|living|live|reside|residing) (in|near|within)/.test(q), value: (p, q) => (livesIn(p, q) ? 'Yes' : 'No') },
     { test: (q) => /in[- ]?(the )?office|on[- ]?site|onsite|in[- ]person|hybrid|commut|days (a|per|each) week/.test(q), value: (p) => yn(p.openToOnsite) },
     { test: (q) => /location|where are you (based|located)|current (city|address)|^address|city, state/.test(q), value: (p) => p.location },
     { test: (q) => /current (company|employer)|^(company|employer)( name)?$|most recent (company|employer)/.test(q), value: (p) => p.currentCompany },
@@ -197,9 +197,10 @@
         doneGroups.add(el.name);
         const group = fields.filter((f) => f.type === 'radio' && f.name === el.name);
         if (group.some((g) => g.checked)) continue;
+        const opts = group.map((g) => ({ el: g, text: g.labels?.[0] ? textOf(g.labels[0]) : g.value }));
         let want = ruleFor(q, el)?.value(profile);
-        if (!want) want = (await send('answer', { question, short: true }))?.data?.answer;
-        const choice = want && pickOption(group.map((g) => ({ el: g, text: g.labels?.[0] ? textOf(g.labels[0]) : g.value })), want);
+        if (!want || !pickOption(opts, want)) want = (await send('answer', { question, short: true, options: opts.map((o) => o.text) }))?.data?.answer;
+        const choice = want && pickOption(opts, want);
         if (choice) fill(choice.el, true);
         else if (group.some(isRequired)) out.missing.push(question);
         continue;
@@ -207,15 +208,25 @@
 
       if (el.type === 'checkbox') {
         if (!el.checked && isRequired(el) && CONSENT.test(question)) fill(el, true);
-        else if (!el.checked && isRequired(el) && !el.closest('fieldset')?.querySelector('input:checked')) out.missing.push(question);
+        else if (!el.checked && isRequired(el) && !el.closest('fieldset')?.querySelector('input:checked')) {
+          // A required "pick any that apply": let HireMe choose from the labels
+          const box = el.closest('fieldset, [role="group"]');
+          const boxes = box ? [...box.querySelectorAll('input[type=checkbox]')] : [el];
+          const labels = boxes.map((b) => (b.labels?.[0] ? textOf(b.labels[0]) : b.value));
+          const ans = (await send('answer', { question, short: true, options: labels }))?.data?.answer;
+          const hit = ans && pickOption(boxes.map((b, i) => ({ el: b, text: labels[i] })), ans);
+          if (hit) fill(hit.el, true);
+          else out.missing.push(question);
+        }
         continue;
       }
 
       if (el instanceof HTMLSelectElement) {
         if (el.selectedIndex > 0 && el.value) continue;
+        const opts = [...el.options].map((o) => ({ el: o, text: o.text }));
         let want = ruleFor(q, el)?.value(profile);
-        if (!want) want = (await send('answer', { question, short: true }))?.data?.answer;
-        const choice = want && pickOption([...el.options].map((o) => ({ el: o, text: o.text })), want);
+        if (!want || !pickOption(opts, want)) want = (await send('answer', { question, short: true, options: opts.map((o) => o.text) }))?.data?.answer;
+        const choice = want && pickOption(opts, want);
         if (choice) fill(el, choice.el.value);
         else if (isRequired(el)) out.missing.push(question);
         continue;

@@ -102,8 +102,9 @@ export function Terms() {
 
       <h2>Applying for you</h2>
       <p>
-        Swiping right on a role authorizes HireMe to submit an application to it in your name, using your profile and saved answers, including accepting those forms’ standard privacy acknowledgments. Review your profile so what’s sent is accurate. HireMe asks you directly
-        about work authorization, sponsorship, salary and similar questions rather than guessing. Undo a swipe before HireMe starts the application to stop it.
+        Swiping right on a role authorizes HireMe to submit an application to it in your name, using your profile and saved answers, including accepting those forms’ standard privacy acknowledgments. HireMe answers other questions on the form for you, favorably but
+        grounded in your profile and the defaults on your profile page, which you can change. It answers work authorization, sponsorship, citizenship, degrees, clearance and
+        criminal-history questions only from what you’ve told it, and asks you when it doesn’t know. Review your profile so what’s sent is accurate. Undo a swipe before HireMe starts the application to stop it.
       </p>
 
       <h2>Listings and outcomes</h2>

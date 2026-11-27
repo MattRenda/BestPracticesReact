@@ -74,45 +74,33 @@ Thanks,
 ${profile.name || first}`;
 }
 
-/** Drafts an answer. Returns '' when it shouldn't or can't. */
-export async function draftAnswer(env, profile, email, job, question, short) {
-  if (FACTUAL.test(question)) return factualAnswer(env, profile, job, question, short);
-  if (!aiEnabled(env)) {
-    if (/why.{0,40}(interest|want|join|apply|excite|us|company)/i.test(question))
-      return `${possessive(job.company)} work lines up with what I want to build next${profile.headline ? ` as a ${profile.headline.replace(/^(a|an) /i, '')}` : ''}. ${profile.bio || ''}`.trim();
-    return '';
-  }
-  try {
-    const t = await callClaude(
-      env,
-      SYSTEM,
-      `${profileBlock(profile, email)}\n\n${jobBlock(job)}\n\nApplication question: "${question}"\n\n${
-        short ? 'Answer in one short line.' : 'Answer in 40-150 words.'
-      } If it can't be answered truthfully from the profile, reply exactly: UNKNOWN`,
-      400,
-    );
-    return t === 'UNKNOWN' || /^unknown\b/i.test(t) ? '' : t;
-  } catch {
-    return '';
-  }
-}
+const ANSWER_RULES = `You fill in a job application for the developer below, in their voice. Be optimistic but not over the top:
+- Preferences and availability (relocating, office days, travel, hours, start date): lean yes, unless the facts say otherwise.
+- Skills and experience: say yes when the resume shows it or something closely related; otherwise say so briefly and positively.
+- Open questions: 2-4 plain, specific sentences grounded in the resume. No buzzwords, no exaggeration.
+- Never misstate work authorization, visa sponsorship, citizenship, degrees, certifications, security clearance or criminal history:
+  use the facts, and if they don't say, reply exactly UNKNOWN.
+- Demographic questions (gender, race, veteran, disability): pick "prefer not to say" or reply UNKNOWN.
+- Never invent employers, titles, numbers or credentials.`;
 
 /**
- * Factual questions (relocation, on-site, location, salary, start date…) are answered only from the
- * developer's own facts and form answers — Claude picks the wording, never the fact. Without Claude,
- * the form rules cover the common ones and anything else goes back to the developer.
+ * Claude's answer to a form question, or '' (no API key, an error, or UNKNOWN). With `options`,
+ * the reply is one of them, word for word.
  */
-async function factualAnswer(env, profile, job, question, short) {
-  if (!aiEnabled(env) || !profile.facts) return '';
-  if (/gender|pronoun|\bsex\b|race|ethnic|hispanic|latin|veteran|disabilit|criminal|convict|felony/i.test(question)) return '';
+export async function draftAnswer(env, profile, email, job, question, short, options = []) {
+  if (!aiEnabled(env)) return '';
   try {
+    const choices = options.filter((o) => o && !/^(select|choose|--|please)/i.test(o));
     const t = await callClaude(
       env,
-      `You fill in job application forms for a developer using ONLY the facts below. If the facts don't answer the question, reply exactly: UNKNOWN. Never guess.`,
-      `Facts about the developer:\n${profile.facts}\n\nCompany: ${job.company} — role: ${job.title}\n\nQuestion: "${question}"\n\n${short ? 'Answer in a few words (for a yes/no question, start with Yes or No).' : 'Answer in one or two sentences.'}`,
-      120,
+      `${ANSWER_RULES}\n\n${SYSTEM}`,
+      `${profileBlock(profile, email)}\n${profile.facts ? `\nFacts and form answers:\n${profile.facts}\n` : ''}\n${jobBlock(job)}\n\nApplication question: "${question}"\n\n${
+        choices.length ? `Choose one of these options and reply with it exactly:\n${choices.map((c) => `- ${c}`).join('\n')}` : short ? 'Answer in one short line (yes/no questions start with Yes or No).' : 'Answer in 2-4 sentences.'
+      }`,
+      short || choices.length ? 120 : 400,
     );
-    return t === 'UNKNOWN' || /^unknown\b/i.test(t) ? '' : t;
+    if (t === 'UNKNOWN' || /^unknown\b/i.test(t)) return '';
+    return choices.length ? choices.find((c) => c.toLowerCase() === t.toLowerCase().replace(/^- /, '')) || '' : t;
   } catch {
     return '';
   }

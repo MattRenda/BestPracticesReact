@@ -312,7 +312,7 @@ export function Onboarding({ isGuest, email, pendingEmail, onDone }: { isGuest: 
       canGo = !!d.auth && !!d.sponsor
       body = (
         <>
-          <Q title="Two quick ones every application asks" sub="HireMe never guesses these for you." />
+          <Q title="Two quick ones every application asks" sub="HireMe always answers these exactly as you say." />
           <YesNo label="Can you work in the US?" value={d.auth} onChange={(v) => update({ auth: v })} />
           <YesNo label="Will you need visa sponsorship?" value={d.sponsor} onChange={(v) => update({ sponsor: v })} />
         </>
@@ -381,8 +381,8 @@ export function Onboarding({ isGuest, email, pendingEmail, onDone }: { isGuest: 
             </div>
           )}
           <p className="fine ob-fine">
-            Swipe right and HireMe applies for you: it fills out the startup’s application with these details and your resume, answers open-ended questions from your profile,
-            and sends it. It never guesses things like salary or start dates; it asks you.
+            Swipe right and HireMe applies for you: it fills out the startup’s application with these details and your resume, answers the extra questions positively
+            from your resume (never making anything up), and sends it. Change any default answer on your profile.
             {isGuest && ' We’ll email a link to confirm your address before the first one goes out.'}
           </p>
         </>

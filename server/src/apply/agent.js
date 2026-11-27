@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { coverNote, draftAnswer } from './ai.js';
 import { letterHtml, profileResume, resumeHtml } from './resume.js';
+import { autoAnswer } from './answers.js';
 
 const FILLER = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'filler.js'), 'utf8');
 const DECLINE = /decline|prefer not|don.?t wish|do not wish|not to (say|answer|disclose|self)|choose not/i;
@@ -51,13 +52,13 @@ export function formDefaults(p, now = new Date()) {
   const notice = String(p?.form_notice || '').trim() || '2 weeks';
   const weeks = Number(notice.match(/(\d+)\s*week/i)?.[1] ?? (/immediate|now|asap/i.test(notice) ? 0 : 2));
   const start = new Date(now.getTime() + weeks * 7 * 86_400_000);
-  const remote = p?.work_pref === 'remote';
   return {
     salary: String(p?.form_salary || '').trim() || (p?.salary_min ? `$${Number(p.salary_min).toLocaleString('en-US')}` : 'Flexible — happy to discuss'),
     notice,
     startDate: start.toISOString().slice(0, 10),
-    relocate: ['yes', 'no'].includes(p?.form_relocate) ? p.form_relocate : remote ? 'no' : 'yes',
-    onsite: ['yes', 'no'].includes(p?.form_onsite) ? p.form_onsite : remote ? 'no' : 'yes',
+    // Open by default: a yes keeps doors open, and the developer can switch either to No.
+    relocate: ['yes', 'no'].includes(p?.form_relocate) ? p.form_relocate : 'yes',
+    onsite: ['yes', 'no'].includes(p?.form_onsite) ? p.form_onsite : 'yes',
   };
 }
 
@@ -287,7 +288,11 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
         answers.push({ question: payload.question, answer: saved, source: 'saved' });
         return { ok: true, data: { answer: saved } };
       }
-      const drafted = await draftAnswer(env, { ...profile, facts: factsFor(profile) }, profile.email, job, payload.question, payload.short);
+      // Claude when there's a key, then HireMe's own rules: optimistic, grounded in the resume.
+      const options = Array.isArray(payload.options) ? payload.options.map(String).slice(0, 60) : [];
+      const drafted =
+        (await draftAnswer(env, { ...profile, facts: factsFor(profile) }, profile.email, job, payload.question, payload.short, options)) ||
+        autoAnswer({ question: payload.question, options, short: payload.short, profile, defaults: formDefaults(profile), job });
       if (drafted) answers.push({ question: payload.question, answer: drafted, source: 'drafted' });
       return { ok: true, data: { answer: drafted } };
     });
