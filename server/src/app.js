@@ -1,5 +1,5 @@
 import express from 'express';
-import { existsSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, MAX_HEADCOUNT } from './db.js';
@@ -592,6 +592,35 @@ export function createApp(
       notify(to.trim(), `Report: ${s.name} (${reason})${hidden ? ' — now hidden' : ''}`, `${req.user.email} reported “${s.name}” for ${reason}.\n${str(req.body?.detail, 1000)}\n\n${link(req, 'admin')}`);
     res.status(201).json({ ok: true });
   });
+
+  // ---------- one-time repair: headlines and LinkedIn links cut off by the old resume reader ----------
+  // PDFs that left a gap where a ligature was ("So ware") cut titles short ("Senior So"). The resume
+  // is on file, so read it again and take the new value only when the saved one is a cut-off start of it.
+  (async () => {
+    if (db.prepare("SELECT 1 FROM settings WHERE key = 'repair_cut_fields_1'").get()) return;
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('repair_cut_fields_1', datetime('now'))").run();
+    let fixed = 0;
+    const rows = db.prepare("SELECT p.*, u.email FROM dev_profiles p JOIN users u ON u.id = p.user_id WHERE p.resume_file IS NOT NULL AND p.resume_file != ''").all();
+    for (const p of rows) {
+      try {
+        const { fields = {} } = await parseResume(readFileSync(path.join(applier.resumesDir, p.resume_file)), { log, env: {}, hints: { email: p.email } });
+        const cut = (oldV, newV) => !!oldV && !!newV && newV.length > oldV.length && newV.toLowerCase().startsWith(oldV.toLowerCase());
+        const headline = (fields.headline || '').split(' · ')[0];
+        if (cut(p.headline, headline) || cut(p.headline, fields.headline)) {
+          db.prepare('UPDATE dev_profiles SET headline = ? WHERE user_id = ?').run(cut(p.headline, headline) ? headline : fields.headline, p.user_id);
+          fixed++;
+        }
+        const links = parse(p.links, {});
+        if (cut(links.linkedin, fields.links?.linkedin)) {
+          db.prepare('UPDATE dev_profiles SET links = ? WHERE user_id = ?').run(JSON.stringify({ ...links, linkedin: fields.links.linkedin }), p.user_id);
+          fixed++;
+        }
+      } catch {
+        /* resume missing or unreadable: leave it */
+      }
+    }
+    if (rows.length) log.info?.(`[repair] re-read ${rows.length} resumes, fixed ${fixed} cut-off fields`);
+  })();
 
   // ---------- startups listing their own roles ----------
   hiringRoutes(app, {
