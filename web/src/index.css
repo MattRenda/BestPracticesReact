@@ -582,3 +582,12 @@ a { color: var(--moss); }
 .form-answers summary { cursor: pointer; font-weight: 700; font-size: var(--t-sm); margin-bottom: 8px; }
 .toggle.compact { margin: 0; flex: none; }
 .admin-list.methods li { align-items: center; }
+
+/* Startups listing roles (#/hiring) */
+.brand-tag { font-size: var(--t-sm); font-weight: 600; color: var(--muted); margin-left: 4px; }
+.hiring .view { margin: 0 auto; }
+.hiring-roles li.closed strong { color: var(--muted); }
+.row-actions { display: flex; gap: 8px; align-items: flex-start; flex: none; }
+.hiring-note { margin-top: 14px; }
+.hiring-link { margin: 18px 0 0; font-size: var(--t-sm); }
+.sheet .sheet-form { overflow-y: auto; max-height: 90vh; }

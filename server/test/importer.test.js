@@ -180,11 +180,12 @@ test('developers see imported roles, ranked by shared skills; a yes starts an ap
   const dev = client();
   await dev.signIn('dev@example.com', 'dev');
   await dev.req('PUT', '/profile', { name: 'Dee Example', headline: 'Engineer', skills: 'React, Node.js' });
-  // By default only roles HireMe can send by itself: the email ones
+  // By default everything is in the deck: email roles and form roles
   let deck = (await dev.req('GET', '/deck')).body;
-  assert.deepEqual(deck.map((c) => c.title).sort(), ['Full-stack Engineer (React, Python)', 'Senior Backend Engineer']);
+  assert.ok(deck.some((c) => c.title === 'Founding Engineer'));
+  assert.ok(deck.some((c) => c.title === 'Senior Backend Engineer'));
 
-  // An admin switches Ashby forms on
+  // An admin switches everything but email and Ashby off
   const admin = client();
   await admin.signIn('admin@hireme.test', 'dev');
   const methods = (await admin.req('GET', '/admin/apply-methods')).body;
@@ -194,7 +195,7 @@ test('developers see imported roles, ranked by shared skills; a yes starts an ap
   const tr = deck.find((c) => c.title === 'Founding Engineer');
   assert.ok(tr.apply_url.includes('ashbyhq.com'));
   assert.deepEqual(tr.sharedSkills.sort(), ['node.js', 'react']);
-  assert.ok(!deck.some((c) => c.startup.name === 'Quiet Lab'), 'Greenhouse still off');
+  assert.ok(!deck.some((c) => c.startup.name === 'Quiet Lab'), 'Greenhouse switched off');
 
   const r = (await dev.req('POST', `/deck/${tr.id}`, { liked: true })).body;
   assert.ok(r.apply_url.includes('/application'));

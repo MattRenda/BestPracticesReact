@@ -346,24 +346,24 @@ export function createApplier(
 
       if (!filled) return await done('failed', 'No application form found on the page');
       if (uniq.length) return await done('needs_you', `${uniq.length === 1 ? 'A question' : `${uniq.length} questions`} only you can answer`, uniq, filled);
-      if (await hasCaptcha(page)) return await done('needs_you', 'The form has a CAPTCHA, so finish this one on their site', [], filled);
+      if (await hasCaptcha(page)) return await done('failed', 'Didn’t go through: the site has a bot check (CAPTCHA). You can apply on their site', [], filled);
       if (practice) return await done('practiced', 'Filled but not submitted (test)', [], filled);
 
       const submit = await findSubmit(page);
-      if (!submit) return await done('needs_you', 'Couldn’t find the Submit button, so finish this one on their site', [], filled);
+      if (!submit) return await done('failed', 'Didn’t go through: HireMe couldn’t find the Submit button. You can apply on their site', [], filled);
       const startUrl = page.url();
       await submit.click({ timeout: 5000 });
       for (let waited = 0; waited < 25_000; waited += 1000) {
         await sleep(1000);
         const u = page.url();
         if ((u !== startUrl && /confirm|thank|success|submitted|complete/i.test(u)) || SUCCESS.test(await pageText(page))) return await done('submitted', '', [], filled);
-        if (await hasCaptcha(page, { challengeOnly: true })) return await done('needs_you', 'A CAPTCHA appeared when submitting, so finish this one on their site', [], filled);
+        if (await hasCaptcha(page, { challengeOnly: true })) return await done('failed', 'Didn’t go through: a bot check (CAPTCHA) appeared when submitting. You can apply on their site', [], filled);
         if (waited >= 3000) {
           const errors = await validationErrors(page);
-          if (errors.length) return await done('needs_you', `The form didn’t accept it: ${errors.slice(0, 3).join('; ')}`, [], filled);
+          if (errors.length) return await done('failed', `Didn’t go through: the form didn’t accept it (${errors.slice(0, 3).join('; ')})`, [], filled);
         }
       }
-      return await done('needs_you', 'Sent, but the site didn’t confirm it. Check the screenshot, or apply on their site to be sure', [], filled);
+      return await done('failed', 'May not have gone through: the site didn’t show a confirmation, often a hidden bot check. You can apply on their site to be sure', [], filled);
     } finally {
       await context.close().catch(() => {});
     }
@@ -413,7 +413,8 @@ export function createApplier(
          updated_at = datetime('now'), submitted_at = CASE WHEN ? = 'submitted' THEN datetime('now') ELSE submitted_at END
        WHERE id = ?`,
     ).run(r.state, r.error || '', JSON.stringify(r.missing || []), JSON.stringify(r.answers || []), r.coverNote || '', shotName, r.state, app.id);
-    if (r.state === 'needs_you' || r.state === 'failed' || r.state === 'review') {
+    if (r.state === 'needs_you' || r.state === 'review') {
+      // Failures stay quiet (listed under Applications); only things the developer can act on get an email.
       const dev = db.prepare('SELECT u.email, u.last_seen_at FROM users u WHERE u.id = ?').get(app.dev_id);
       const away = !dev.last_seen_at || Date.now() - new Date(`${dev.last_seen_at}Z`).getTime() > 10 * 60_000;
       const recent = Date.now() - (lastEmailed.get(app.dev_id) || 0) < 2 * 3600_000;
@@ -474,7 +475,7 @@ export function createApplier(
       [profile.location, profile.phone, profile.email].filter(Boolean).join(' · '),
       ...links.map(([k, u]) => `${k}: ${u}`),
       '',
-      `Resume attached. I saw the ${role.title} role in the Hacker News “Who is hiring?” thread.`,
+      role.source === 'hn' ? `Resume attached. I saw the ${role.title} role in the Hacker News “Who is hiring?” thread.` : `Resume attached. I saw the ${role.title} role on HireMe.`,
     ]
       .filter((l) => l !== undefined && l !== null)
       .join('\n');

@@ -1,6 +1,6 @@
 # HireMe
 
-Sprout-style job applying, for startups only. Developers swipe through engineering roles at startups with 50 or fewer people; swipe right and HireMe fills out and submits the application for them. No recruiters, no big companies, nothing for companies to sign up for.
+Sprout-style job applying, for startups only. Developers swipe through engineering roles at startups with 50 or fewer people; swipe right and HireMe fills out and submits the application for them. No recruiters, no big companies. Startups can also post roles directly (`#/hiring`); applications to those arrive by email.
 
 - **Discover:** one role per card, ranked by shared skills, work style and salary floor.
 - **Swipe right:** HireMe applies. Nothing to fill in at swipe time; everything applications need is gathered while getting started. **Swipe left:** skip. Undo works until HireMe starts the application.
@@ -33,9 +33,18 @@ ycombinator.com itself is never scraped; its terms of use don't allow it.
 
 ### What's in the deck
 
-Only roles HireMe can actually send with one swipe are shown. **Email roles** (from Hacker News) are always on: HireMe emails the company from `MAIL_FROM` as "Name via HireMe", reply-to and cc the developer, with a short note and their resume attached. **Form roles** (Ashby, Greenhouse, Lever, other sites) are off by default, because their bot protection (reCAPTCHA, hCaptcha, Turnstile) often blocks automated submissions; admins can switch each system on in **Admin → What's in the deck**, which shows how many were tried, sent and stuck. Email sending is capped at `EMAIL_DAILY_CAP` per day (default 300, under Gmail's limit); the rest wait for the next day.
+**Email roles** always go through: roles startups post on HireMe and Hacker News posts. HireMe emails the company from `MAIL_FROM` as "Name via HireMe", reply-to and cc the developer, with a short note and their resume attached. Email sending is capped at `EMAIL_DAILY_CAP` per day (default 300, under Gmail's limit); the rest wait for the next day.
 
-Admins can run or watch imports from the Admin tab. Set `IMPORT_JOBS=off` to disable the schedule.
+**Form roles** (Ashby, Greenhouse, Lever, other sites) are in the deck too. Many of those sites have bot checks (reCAPTCHA, hCaptcha, Turnstile) that can block an automated submission; HireMe never tries to get around them. When one blocks it, or the site shows no confirmation, the application is marked "Didn't go through" with a link to apply on their site, without emailing or prompting the developer (like Sprout). Admins see how many were tried, sent and didn't go through per system in **Admin → What's in the deck**, and can switch a system off.
+
+## Startups listing their own roles
+
+`#/hiring` (linked from the home page) lets someone at a startup post developer roles directly (`server/src/hiring.js`):
+
+- They sign in with their **work email**; the company's website has to be at the same domain (personal addresses like Gmail can't list a company). Coworkers at the same domain join the same company, and a company HireMe already imported (YC, Hacker News) can be claimed the same way.
+- The company must have **50 people or fewer** and not look like a recruiter or staffing firm. Titles must be engineering roles, with a real description.
+- Roles go live in the deck right away; admins get an email about each new company and can take it down, and reports work as for any startup.
+- A right swipe emails the application to the startup's chosen address (any address at its domain, default the poster's). The startup sees how many applications each role has had, and can edit, close or reopen roles (up to 25 open).
 
 ## Applying for developers
 
@@ -125,6 +134,7 @@ server/   Express + SQLite API
   src/app.js        Profiles, resume upload, deck, swipes, applications, reports, admin
   src/importer.js   Startup jobs from YC's dataset and Ashby/Greenhouse/Lever boards
   src/hn.js         Email-apply roles from Hacker News "Who is hiring?" threads
+  src/hiring.js     Startups posting their own roles (#/hiring)
   src/apply/        The applying worker (headless Chromium), form filler, Claude drafts
   src/resume-parse.js  Reads a resume PDF into suggested profile fields
   src/mail.js       SMTP (or log to console when not configured)

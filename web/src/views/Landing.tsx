@@ -119,6 +119,9 @@ export function Landing({ me, onStart }: { me?: Me; onStart: () => void }) {
               <strong>Swipe and done.</strong> HireMe answers the extra questions from your resume, positive but never made up, and shows you exactly what it sent.
             </li>
           </ul>
+          <p className="hiring-link">
+            <strong>Hiring developers?</strong> <a href="#/hiring">List your startup’s roles on HireMe</a>. Free, for teams of 50 or fewer.
+          </p>
           <p className="legal-links">
             <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
           </p>
@@ -137,7 +140,7 @@ export function SignIn({ token, onDone }: { token: string; onDone: () => void })
     api.verify(token).then(
       async (r) => {
         // Applications that went out because of this sign-in are waiting in Applications.
-        history.replaceState(null, '', r.sent?.length ? '/#/applications' : '/#/discover')
+        history.replaceState(null, '', r.intent === 'hiring' ? '/#/hiring' : r.sent?.length ? '/#/applications' : '/#/discover')
         await onDone()
         window.dispatchEvent(new HashChangeEvent('hashchange'))
       },

@@ -125,24 +125,28 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
       if (!mailer.configured && production) return res.status(503).json({ error: 'Email isn’t set up on this server yet (SMTP_URL).' });
 
       const token = randomBytes(32).toString('base64url');
+      // 'hiring': someone at a startup listing roles; the link takes them back there.
+      const intent = req.body?.intent === 'hiring' ? 'hiring' : '';
+      const guestId = intent ? null : guestOf(req); // a startup person isn't finishing a developer guest profile
       db.prepare("DELETE FROM login_tokens WHERE expires_at < datetime('now')").run();
       const existing = db.prepare('SELECT 1 FROM users WHERE email = ? AND is_guest = 0').get(email);
       // A guest confirming their email gets a day: their applications wait on this link.
-      const minutes = guestOf(req) ? 24 * 60 : LINK_MINUTES;
-      db.prepare(`INSERT INTO login_tokens (hash, email, intent, guest_id, expires_at) VALUES (?, ?, '', ?, datetime('now', '+${minutes} minutes'))`).run(
+      const minutes = guestId ? 24 * 60 : LINK_MINUTES;
+      db.prepare(`INSERT INTO login_tokens (hash, email, intent, guest_id, expires_at) VALUES (?, ?, ?, ?, datetime('now', '+${minutes} minutes'))`).run(
         sha(token),
         email,
-        guestOf(req),
+        intent,
+        guestId,
       );
-      if (guestOf(req)) db.prepare('UPDATE users SET pending_email = ? WHERE id = ?').run(email, guestOf(req));
+      if (guestId) db.prepare('UPDATE users SET pending_email = ? WHERE id = ?').run(email, guestId);
       const link = `${baseUrl(req)}/#/signin/${token}`;
       try {
         await mailer.send({
           to: email,
-          subject: guestOf(req) && !existing ? 'Confirm your email to start applying' : 'Your HireMe sign-in link',
-          text: guestOf(req) && existing
+          subject: guestId && !existing ? 'Confirm your email to start applying' : 'Your HireMe sign-in link',
+          text: guestId && existing
             ? `Tap this link to sign back in to HireMe. Your profile is right where you left it, and anything you swiped on just now comes with you:\n\n${link}\n\nIt works once and expires in 24 hours. If this wasn’t you, ignore this email.`
-            : guestOf(req)
+            : guestId
             ? `Tap this link to confirm your email. HireMe then sends the applications for the jobs you swipe right on, with this email as your contact:\n\n${link}\n\nIt works once and expires in 24 hours. If this wasn’t you, ignore this email and nothing will be sent.`
             : `Open this link to sign in to HireMe:\n\n${link}\n\nIt works once and expires in ${LINK_MINUTES} minutes. If you didn’t ask for it, ignore this email.`,
         });
@@ -159,8 +163,8 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
       if (!row) return res.status(400).json({ error: 'That sign-in link has expired or was already used. Request a new one.' });
       db.prepare('DELETE FROM login_tokens WHERE hash = ?').run(row.hash);
       // The guest is remembered on the link itself, so it works even if opened in another browser.
-      const r = signIn(req, res, row.email, row.guest_id || guestOf(req));
-      res.json({ ok: true, sent: r.sent });
+      const r = signIn(req, res, row.email, row.intent ? null : row.guest_id || guestOf(req));
+      res.json({ ok: true, sent: r.sent, intent: row.intent || '' });
     });
 
     // "Sign in with Google": the browser sends Google's signed ID token; Google has verified the email.

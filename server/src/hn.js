@@ -8,7 +8,7 @@ import { looksLikeAgency, siteDomain } from './rules.js';
 import { MAX_HEADCOUNT } from './db.js';
 
 const API = 'https://hn.algolia.com/api/v1';
-const FREE_MAIL = /@(gmail|googlemail|yahoo|hotmail|outlook|live|icloud|me|aol|proton(mail)?|pm|hey|fastmail|gmx|yandex|zoho)\.[a-z.]+$/i;
+export const FREE_MAIL = /@(gmail|googlemail|yahoo|hotmail|outlook|live|icloud|me|aol|proton(mail)?|pm|hey|fastmail|gmx|yandex|zoho)\.[a-z.]+$/i;
 const NOT_APPLY = /^(privacy|security|abuse|support|help|press|legal|info|noreply|no-reply|sales|billing)@/i;
 const ATS_HOSTS = /ashbyhq|greenhouse|lever\.co|workable|recruitee|bamboohr|breezy|personio|rippling|wellfound|angel\.co|ycombinator|workatastartup|linkedin|news\.ycombinator|docs\.google|notion\.(so|site)|calendly|github\.com/i;
 

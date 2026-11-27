@@ -1,4 +1,4 @@
-import type { AdminQueue, ApplyMethod, Application, DevProfile, ImportRun, Me, RoleCard, SavedRole, Startup, SwipeResult } from './types'
+import type { AdminQueue, ApplyMethod, Application, DevProfile, Hiring, HiringCompany, HiringRole, ImportRun, Me, RoleCard, SavedRole, Startup, SwipeResult } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -34,8 +34,8 @@ export const api = {
   config: () => call<{ googleClientId: string | null }>('GET', '/config'),
   googleSignIn: (credential: string) => call<{ ok: boolean; sent: string[] }>('POST', '/auth/google', { credential }),
   startGuest: () => call<{ ok: boolean }>('POST', '/auth/guest'),
-  startSignIn: (email: string) => call<{ sent: boolean; devLink?: string }>('POST', '/auth/start', { email }),
-  verify: (token: string) => call<{ ok: boolean; sent: string[] }>('POST', '/auth/verify', { token }),
+  startSignIn: (email: string, intent?: 'hiring') => call<{ sent: boolean; devLink?: string }>('POST', '/auth/start', { email, intent }),
+  verify: (token: string) => call<{ ok: boolean; sent: string[]; intent: string }>('POST', '/auth/verify', { token }),
   logout: () => call<void>('POST', '/auth/logout'),
   deleteAccount: () => call<void>('DELETE', '/me'),
 
@@ -59,6 +59,12 @@ export const api = {
   saved: () => call<SavedRole[]>('GET', '/saved'),
 
   report: (id: number, reason: string, detail = '') => call<{ ok: boolean }>('POST', '/reports', { type: 'startup', id, reason, detail }),
+
+  hiring: () => call<Hiring>('GET', '/hiring'),
+  createCompany: (c: Partial<HiringCompany>) => call<Hiring>('POST', '/hiring/startup', c),
+  saveCompany: (c: Partial<HiringCompany>) => call<Hiring>('PUT', '/hiring/startup', c),
+  postRole: (r: Partial<HiringRole>) => call<Hiring>('POST', '/hiring/roles', r),
+  saveRole: (id: number, r: Partial<HiringRole>) => call<Hiring>('PUT', `/hiring/roles/${id}`, r),
 
   adminQueue: () => call<AdminQueue>('GET', '/admin/queue'),
   applyMethods: () => call<ApplyMethod[]>('GET', '/admin/apply-methods'),

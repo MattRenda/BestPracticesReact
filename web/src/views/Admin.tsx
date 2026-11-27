@@ -245,8 +245,8 @@ function ApplyMethodsPanel({ onChange }: { onChange: () => void }) {
     <section className="group">
       <h2 className="group-title">What’s in the deck</h2>
       <p className="small">
-        Only roles HireMe can send by itself. Email applications always work. Most form systems guard against automated submission, so they stay off unless
-        their numbers show HireMe getting through.
+        Email applications (roles posted on HireMe, Hacker News) always go through. Form systems are on by default; when a site’s bot check blocks HireMe, the
+        application quietly shows as “Didn’t go through” for the developer. Switch a system off if it mostly fails.
       </p>
       {error && <p className="error">{error}</p>}
       {methods && (
@@ -256,7 +256,7 @@ function ApplyMethodsPanel({ onChange }: { onChange: () => void }) {
               <div>
                 <strong>{m.label}</strong>
                 <p className="muted small">
-                  {m.openRoles} open roles · {m.tried ? `${m.sent} of ${m.tried} sent${m.stuck ? `, ${m.stuck} stuck` : ''}` : 'no applications yet'}
+                  {m.openRoles} open roles · {m.tried ? `${m.sent} of ${m.tried} sent${m.stuck ? `, ${m.stuck} didn’t go through` : ''}` : 'no applications yet'}
                 </p>
               </div>
               {m.always ? (

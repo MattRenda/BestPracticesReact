@@ -172,8 +172,10 @@ export function openDb(file = DB_PATH) {
     ['ats', 'TEXT'],
     ['ats_slug', 'TEXT'],
     ['ats_checked_at', 'TEXT'],
+    ['apply_email', 'TEXT'], // where applications to roles the startup posts on HireMe are emailed
   ]);
-  // roles.source: 'manual' (old founder-written roles; not shown) | 'ats' (imported from the startup's job board).
+  // roles.source: 'manual' (old founder-written roles; not shown) | 'ats' (imported from the startup's job board)
+  //   | 'hn' (Hacker News "Who is hiring?") | 'direct' (posted on HireMe by someone at the startup).
   addColumns('roles', [
     ['source', "TEXT NOT NULL DEFAULT 'manual'"],
     ['external_id', 'TEXT'],
@@ -236,6 +238,12 @@ export function openDb(file = DB_PATH) {
   if (db.prepare('PRAGMA user_version').get().user_version < 1) {
     db.exec("UPDATE applications SET state = 'queued', error = '', missing = '[]', updated_at = datetime('now') WHERE state = 'needs_you'");
     db.exec('PRAGMA user_version = 1');
+  }
+  // One-time: blocked submits (CAPTCHA, no confirmation, form errors) are quiet failures now, not to-dos.
+  if (db.prepare('PRAGMA user_version').get().user_version < 2) {
+    db.exec(`UPDATE applications SET state = 'failed', error = 'Didn’t go through: the site has a bot check or didn’t confirm it. You can apply on their site'
+             WHERE state = 'needs_you' AND (error LIKE '%CAPTCHA%' OR error LIKE '%didn’t confirm%' OR error LIKE '%Submit button%' OR error LIKE '%didn’t accept%')`);
+    db.exec('PRAGMA user_version = 2');
   }
 
   // HireMe is for developers only now: founder accounts (and accounts that never picked) become developers.

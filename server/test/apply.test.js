@@ -149,7 +149,7 @@ test('HireMe fills, uploads, answers and submits the form for the developer', as
   assert.equal(r2.application.state, 'queued');
 });
 
-test('CAPTCHA and unanswerable questions come back to the developer; answers are saved and reused', async (t) => {
+test('A CAPTCHA fails quietly; unanswerable questions come back to the developer; answers are saved and reused', async (t) => {
   if (!browserOk) return t.skip('no browser available');
   const dev = client();
   await dev.signIn('matt@example.com');
@@ -157,10 +157,10 @@ test('CAPTCHA and unanswerable questions come back to the developer; answers are
   await applier.tick(); // the CAPTCHA one queued in the last test
   let list = (await dev.req('GET', '/applications')).body;
   const cap = list.find((x) => x.role_id === roleId('?captcha=1'));
-  assert.equal(cap.state, 'needs_you');
+  assert.equal(cap.state, 'failed');
   assert.match(cap.error, /CAPTCHA/);
   assert.equal(submissions.length, before, 'nothing submitted');
-  assert.equal((await dev.req('GET', '/me')).body.counts.needsYou, 1);
+  assert.equal((await dev.req('GET', '/me')).body.counts.needsYou, 0, 'a failure is not a to-do');
   assert.equal((await dev.req('POST', `/applications/${cap.id}/self`)).status, 204);
 
   // A required question HireMe can't answer

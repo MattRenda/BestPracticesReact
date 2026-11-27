@@ -186,3 +186,40 @@ export interface AdminQueue {
   hidden: HiddenStartup[]
   stats: { devs: number; openRoles: number; listed: number; submitted: number }
 }
+
+export interface HiringRole {
+  id: number
+  title: string
+  description: string
+  location: string
+  work_mode: WorkMode
+  salary_min: number | null
+  salary_max: number | null
+  equity: string
+  status: 'open' | 'closed'
+  created_at: string
+  applications: number
+}
+
+export interface HiringCompany {
+  id: number
+  name: string
+  website: string
+  domain: string
+  headcount: number
+  location: string
+  one_liner: string
+  about: string
+  apply_email: string
+  status: 'live' | 'hidden' | 'too_big'
+}
+
+export interface Hiring {
+  email: string
+  workEmail: boolean
+  suggestedWebsite: string
+  startup: HiringCompany | null
+  existing?: { name: string; website: string; headcount: number } | null
+  roles?: HiringRole[]
+  imported?: number
+}

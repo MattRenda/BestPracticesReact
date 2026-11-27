@@ -163,9 +163,13 @@ function RoleCardView({ c, onReported }: { c: RoleCard; onReported: () => void }
           <a className="card-link" href={s.website} target="_blank" rel="noreferrer noopener">
             {s.domain}
           </a>
-          <a className="card-link" href={c.apply_url} target="_blank" rel="noreferrer noopener">
-            Original posting
-          </a>
+          {c.apply_url ? (
+            <a className="card-link" href={c.apply_url} target="_blank" rel="noreferrer noopener">
+              Original posting
+            </a>
+          ) : (
+            <span className="muted small">Posted on HireMe</span>
+          )}
           {c.posted_at && <span className="muted small">Posted {ago(c.posted_at)}</span>}
         </span>
         <ReportButton id={s.id} name={s.name} onDone={onReported} />

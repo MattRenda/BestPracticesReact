@@ -33,19 +33,22 @@ export function GoogleButton({
   onError,
   before,
   divider = 'before',
+  next,
 }: {
   onError: (msg: string) => void
   before?: () => Promise<string | void>
   /** Where the "or" line goes, relative to the button. */
   divider?: 'before' | 'after'
+  /** Where to go after signing in (default: Discover, or Applications if applications went out). */
+  next?: string
 }) {
   const box = useRef<HTMLDivElement>(null)
-  const latest = useRef({ onError, before })
+  const latest = useRef({ onError, before, next })
   const [clientId, setClientId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    latest.current = { onError, before }
+    latest.current = { onError, before, next }
   })
 
   useEffect(() => {
@@ -70,7 +73,7 @@ export function GoogleButton({
               const r = await api.googleSignIn(credential)
               // From the home page, keep it in history so the back button returns to it.
               if (!location.hash || location.hash === '#/home') history.replaceState(null, '', '/#/home')
-              location.hash = r.sent?.length ? '#/applications' : '#/discover'
+              location.hash = latest.current.next || (r.sent?.length ? '#/applications' : '#/discover')
               location.reload()
             } catch (e) {
               latest.current.onError((e as Error).message)

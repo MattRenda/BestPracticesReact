@@ -20,7 +20,10 @@ before(async () => {
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}/api`;
 });
-after(() => server.close());
+after(async () => {
+  await app.locals.applier.stop();
+  server.close();
+});
 
 /** A browser-ish client with its own cookie. */
 function client() {
@@ -235,7 +238,7 @@ test('only roles HireMe can send by itself are in the deck; email ones go out as
   await dev.req('POST', '/profile/resume', { name: 'Dana Resume.pdf', data });
   const ids = (await dev.req('GET', '/deck')).body.map((c) => c.id);
   assert.ok(ids.includes(rid), 'email roles are always in');
-  assert.ok(!ids.includes(ashby.rid), 'Ashby forms are off unless an admin turns them on');
+  assert.ok(!ids.includes(ashby.rid), 'Ashby forms are off here (only "other" is on in this test)');
 
   // Earlier tests left form applications to a made-up site in the queue; this test is only about email
   db.prepare("UPDATE applications SET state = 'canceled' WHERE state = 'queued'").run();
@@ -254,6 +257,81 @@ test('only roles HireMe can send by itself are in the deck; email ones go out as
   assert.ok(m.attachments[0].content.length > 1000, 'the actual PDF');
   assert.match(m.text, /^Hi Mailbox Co team,/);
   assert.match(m.text, /GitHub: https:\/\/github\.com\/dana/);
+});
+
+test('startups list their own roles: work email at their domain, 50 or fewer, developer titles; applications are emailed to them', async () => {
+  const anon = client();
+  assert.equal((await anon.req('GET', '/hiring')).status, 401);
+
+  // A personal email can't list a company
+  const gmail = client();
+  await gmail.signIn('founder@gmail.com', 'hiring');
+  assert.equal((await gmail.req('GET', '/hiring')).body.workEmail, false);
+  assert.equal((await gmail.req('POST', '/hiring/startup', { name: 'Nope', website: 'nope.example', headcount: 5 })).status, 403);
+
+  const f = client();
+  await f.signIn('ana@sprocket.example', 'hiring');
+  const h0 = (await f.req('GET', '/hiring')).body;
+  assert.equal(h0.suggestedWebsite, 'https://sprocket.example');
+  assert.equal(h0.startup, null);
+  assert.match((await f.req('POST', '/hiring/startup', { name: 'Sprocket', website: 'other.example', headcount: 5 })).body.error, /has to be at other\.example/);
+  assert.match((await f.req('POST', '/hiring/startup', { name: 'Sprocket', website: 'sprocket.example', headcount: 120 })).body.error, /50 people or fewer/);
+  assert.match((await f.req('POST', '/hiring/startup', { name: 'Sprocket Staffing', website: 'sprocket.example', headcount: 5 })).body.error, /not recruiters/);
+  const h1 = await f.req('POST', '/hiring/startup', { name: 'Sprocket', website: 'https://sprocket.example', headcount: 7, location: 'Remote', one_liner: 'Bike parts, but software' });
+  assert.equal(h1.status, 201, JSON.stringify(h1.body));
+  assert.equal(h1.body.startup.status, 'live');
+  assert.equal(h1.body.startup.apply_email, 'ana@sprocket.example');
+  assert.ok(sent.some((m) => m.to === 'admin@hireme.test' && /New startup on HireMe: Sprocket/.test(m.subject)), 'admins hear about it');
+
+  // Developer roles only, with a real description
+  assert.match((await f.req('POST', '/hiring/roles', { title: 'Account Executive', description: 'x'.repeat(50) })).body.error, /developer roles/);
+  assert.match((await f.req('POST', '/hiring/roles', { title: 'Software Engineer', description: 'short' })).body.error, /description/);
+  // Applications go to an address at the company
+  assert.equal((await f.req('PUT', '/hiring/startup', { apply_email: 'ana@gmail.com' })).status, 400);
+  await f.req('PUT', '/hiring/startup', { apply_email: 'jobs@sprocket.example' });
+  const h2 = (
+    await f.req('POST', '/hiring/roles', {
+      title: 'Founding Engineer',
+      description: 'Build our React and Node.js app end to end, from the database to the UI. Small team, lots of ownership.',
+      work_mode: 'remote',
+      salary_min: 140000,
+      salary_max: 180000,
+      equity: '0.5–1%',
+    })
+  ).body;
+  assert.equal(h2.roles.length, 1);
+  const roleId = h2.roles[0].id;
+  const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(roleId);
+  assert.equal(role.source, 'direct');
+  assert.equal(role.apply_email, 'jobs@sprocket.example');
+  assert.match(role.skills, /React/);
+
+  // A coworker at the same domain joins the same company; HireMe-listed companies (e.g. from YC) can be claimed too
+  const co = client();
+  await co.signIn('ben@sprocket.example', 'hiring');
+  assert.equal((await co.req('GET', '/hiring')).body.existing.name, 'Sprocket');
+  assert.equal((await co.req('POST', '/hiring/startup', { website: 'sprocket.example' })).body.startup.id, h1.body.startup.id);
+
+  // Developers see it and a right swipe emails the startup
+  const dev = client();
+  await dev.signIn('swiper@example.com');
+  await dev.req('PUT', '/profile', READY);
+  const card = (await dev.req('GET', '/deck')).body.find((c) => c.id === roleId);
+  assert.ok(card, 'in the deck right away');
+  assert.equal(card.apply_url, '');
+  db.prepare("UPDATE applications SET state = 'canceled' WHERE state = 'queued'").run();
+  await dev.req('POST', `/deck/${roleId}`, { liked: true });
+  await app.locals.applier.tick();
+  const m = sent.find((x) => x.to === 'jobs@sprocket.example');
+  assert.ok(m, 'emailed');
+  assert.match(m.text, /role on HireMe\./);
+  assert.equal((await f.req('GET', '/hiring')).body.roles[0].applications, 1);
+
+  // Closing a role takes it out of the deck
+  await f.req('PUT', `/hiring/roles/${roleId}`, { status: 'closed' });
+  assert.ok(!(await dev.req('GET', '/deck')).body.some((c) => c.id === roleId));
+  // Another startup's member can't touch it
+  assert.equal((await gmail.req('PUT', `/hiring/roles/${roleId}`, { status: 'open' })).status, 404);
 });
 
 test('accounts can be deleted', async () => {

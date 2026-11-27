@@ -9,6 +9,7 @@ import { siteDomain } from './rules.js';
 import { createImporter } from './importer.js';
 import { createApplier, applyReadiness, formDefaults } from './apply/agent.js';
 import { parseResume } from './resume-parse.js';
+import { hiringRoutes } from './hiring.js';
 
 const WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
@@ -315,11 +316,13 @@ export function createApp(
   // A role is in the deck if its company is listed (not hidden or removed) and it has an application page.
   const LIVE = "r.status = 'open' AND r.apply_url IS NOT NULL AND s.status IN ('listed', 'approved') AND s.headcount <= @max";
 
-  // Only roles HireMe can submit by itself with one swipe: startups that take applications by email,
-  // plus form systems an admin has switched on (most guard their forms against automated submission).
+  // Roles in the deck: startups that take applications by email (always), plus the form systems that are on.
+  // All are on unless an admin switches one off; a form HireMe can't get through fails quietly.
   const FORM_SYSTEMS = ['ashby', 'greenhouse', 'lever', 'other'];
   const formSystems = () => {
-    const v = parse(db.prepare("SELECT value FROM settings WHERE key = 'form_ats'").get()?.value, []);
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'form_ats'").get();
+    if (!row) return FORM_SYSTEMS;
+    const v = parse(row.value, []);
     return Array.isArray(v) ? v.filter((x) => FORM_SYSTEMS.includes(x)) : [];
   };
   const systemOf = "COALESCE(NULLIF(s.ats, 'none'), 'other')";
@@ -590,6 +593,15 @@ export function createApp(
     res.status(201).json({ ok: true });
   });
 
+  // ---------- startups listing their own roles ----------
+  hiringRoutes(app, {
+    db,
+    requireUser,
+    maxHeadcount: MAX_HEADCOUNT,
+    log,
+    notifyAdmins: (subject, text) => adminEmails.filter(Boolean).forEach((to) => notify(to.trim(), subject, `${text}\n\n${publicUrl || ''}/#/admin`)),
+  });
+
   // ---------- admin ----------
   app.get('/api/admin/queue', requireAdmin, (_req, res) => {
     const reports = db
@@ -637,7 +649,7 @@ export function createApp(
   app.get('/api/admin/apply-methods', requireAdmin, (_req, res) => {
     const on = formSystems();
     const methods = [
-      { id: 'email', label: 'Email (Hacker News “Who is hiring?”)', always: true },
+      { id: 'email', label: 'Email (posted on HireMe, Hacker News)', always: true },
       ...FORM_SYSTEMS.map((id) => ({ id, label: id === 'other' ? 'Other forms' : id[0].toUpperCase() + id.slice(1), enabled: on.includes(id) })),
     ];
     for (const m of methods) {

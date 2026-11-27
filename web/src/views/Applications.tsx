@@ -211,7 +211,7 @@ const STATE_LABEL: Record<Application['state'], string> = {
   review: 'Ready to check',
   submitted: 'Applied',
   needs_you: 'Needs you',
-  failed: 'Couldn’t apply',
+  failed: 'Didn’t go through',
   canceled: 'Canceled',
   self_applied: 'You applied',
 }
@@ -334,7 +334,7 @@ function ApplicationSheet({ app, onClose, onChanged }: { app: Application | null
         <div className="sheet-actions wrap">
           {app.apply_url && ['needs_you', 'failed'].includes(app.state) && (
             <a className="btn ghost" href={app.apply_url} target="_blank" rel="noreferrer noopener">
-              Finish on their site
+              Apply on their site
             </a>
           )}
           {['needs_you', 'failed'].includes(app.state) && (
