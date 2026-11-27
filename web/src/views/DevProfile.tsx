@@ -1,3 +1,4 @@
+import { FindMe } from '../components/FindMe'
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { api, uploadResumeFile } from '../api'
 import type { DevProfile, WorkPref } from '../types'
@@ -202,7 +203,27 @@ export function DevProfileView({ isGuest, pendingEmail, onSaved }: { isGuest: bo
         <ApplyingSection p={p} update={update} onResume={(patch) => setP((cur) => ({ ...cur, ...patch }))} toast={setToast} />
 
         <fieldset className="group">
-          <legend>Links</legend>
+          <legend className="legend-row">
+            <span>Links</span>
+            <FindMe
+              who={{ name: p.name, location: p.location }}
+              links={p.links ?? {}}
+              onPick={async (found) => {
+                // Confirming an account is the save: no extra Save tap needed.
+                const next = { ...p, links: { ...p.links, ...found } }
+                setP(next)
+                try {
+                  setP(await api.saveProfile(next))
+                  setDirty(false)
+                  onSaved()
+                  setToast(found.linkedin ? 'GitHub and LinkedIn saved' : 'GitHub saved')
+                } catch (err) {
+                  setDirty(true)
+                  setToast((err as Error).message)
+                }
+              }}
+            />
+          </legend>
           <div className="row2">
             <label className="field">
               <span>GitHub</span>

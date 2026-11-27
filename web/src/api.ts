@@ -1,4 +1,4 @@
-import type { AdminQueue, ApplyMethod, Application, DevProfile, Hiring, HiringCompany, HiringRole, ImportRun, Me, RoleCard, SavedRole, Startup, SwipeResult } from './types'
+import type { FoundAccount, AdminQueue, ApplyMethod, Application, DevProfile, Hiring, HiringCompany, HiringRole, ImportRun, Me, RoleCard, SavedRole, Startup, SwipeResult } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -59,6 +59,8 @@ export const api = {
   saved: () => call<SavedRole[]>('GET', '/saved'),
 
   report: (id: number, reason: string, detail = '') => call<{ ok: boolean }>('POST', '/reports', { type: 'startup', id, reason, detail }),
+
+  findLinks: (who: { name?: string; email?: string; location?: string }) => call<{ candidates: FoundAccount[] }>('POST', '/profile/find-links', who),
 
   hiring: () => call<Hiring>('GET', '/hiring'),
   createCompany: (c: Partial<HiringCompany>) => call<Hiring>('POST', '/hiring/startup', c),

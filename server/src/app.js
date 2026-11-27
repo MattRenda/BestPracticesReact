@@ -11,6 +11,7 @@ import { createApplier, applyReadiness, formDefaults } from './apply/agent.js';
 import { parseResume } from './resume-parse.js';
 import { hiringRoutes } from './hiring.js';
 import { languageOf } from './lang.js';
+import { createFindMe } from './findme.js';
 
 const WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
@@ -61,6 +62,7 @@ export function createApp(
     dataDir = path.dirname(process.env.DB_PATH || path.resolve('data', 'hireme.db')), // resumes and screenshots
     applierOptions = {},
     googleClientId = process.env.GOOGLE_CLIENT_ID || '',
+    findMe = null, // GitHub lookup for "Find me" (tests pass a fake)
   } = {},
 ) {
   const app = express();
@@ -283,6 +285,24 @@ export function createApp(
   // Upload works before the profile is saved (setup can start from a resume); the deck stays
   // locked until name, headline and skills are saved.
   // With { parse: true } the response carries suggested profile fields read from the PDF.
+  // "Find me": GitHub accounts that look like the developer's (and the LinkedIn they link to). Nothing is
+  // saved here; the developer confirms one in the app.
+  const finder = findMe || createFindMe({ fetchImpl, log });
+  app.post('/api/profile/find-links', requireUser, async (req, res) => {
+    if (auth.limited(`findme:${req.user.id}`, 15, 24 * 3600_000)) return res.status(429).json({ error: 'That’s a lot of searches today. Try again tomorrow.' });
+    const p = getProfile(req.user.id) || {};
+    const name = str(req.body?.name, 120) || p.name || '';
+    const emails = [req.user.email, p.email, str(req.body?.email, 254)].filter(Boolean);
+    const location = str(req.body?.location, 120) || p.location || '';
+    if (!name.trim() && !emails.some((e) => /@/.test(e) && !/\.invalid$/.test(e))) return res.status(400).json({ error: 'Add your name first, so HireMe knows who to look for' });
+    try {
+      res.json({ candidates: await finder.find({ name, emails, location }) });
+    } catch (e) {
+      log.warn?.(`[findme] ${e.message}`);
+      res.status(e.busy ? 503 : 502).json({ error: e.busy ? e.message : 'Couldn’t reach GitHub. Try again in a minute.' });
+    }
+  });
+
   app.post('/api/profile/resume', requireRole('dev'), async (req, res) => {
     const buf = Buffer.from(String(req.body?.data || ''), 'base64');
     if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') return res.status(400).json({ error: 'Upload your resume as a PDF' });

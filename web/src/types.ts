@@ -223,3 +223,18 @@ export interface Hiring {
   roles?: HiringRole[]
   imported?: number
 }
+
+/** A GitHub account "Find me" thinks may be the developer's. */
+export interface FoundAccount {
+  login: string
+  name: string
+  avatar: string
+  url: string
+  location: string
+  bio: string
+  repos: number
+  website: string
+  linkedin: string
+  why: string[]
+  strong: boolean
+}

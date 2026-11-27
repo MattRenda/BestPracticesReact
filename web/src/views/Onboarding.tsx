@@ -1,3 +1,4 @@
+import { FindMe } from '../components/FindMe'
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { api, uploadResumeFile } from '../api'
 import type { DevProfile, Links, WorkPref } from '../types'
@@ -321,7 +322,12 @@ export function Onboarding({ isGuest, email, pendingEmail, onDone }: { isGuest: 
     case 'links':
       body = (
         <>
-          <Q title="Where can startups see your work?" sub="Most applications ask for these. A username is fine." />
+          <Q title="Where can startups see your work?" sub="Most applications ask for these. A username is fine, or let HireMe find you." />
+          <FindMe
+            who={{ name: `${d.first} ${d.last}`.trim(), email: d.email || email, location: d.location }}
+            links={d.links}
+            onPick={(found) => update({ links: { ...d.links, ...found } })}
+          />
           {(['linkedin', 'github', 'portfolio'] as const).map((k) => (
             <label key={k} className="field ob-field">
               <span>{k === 'linkedin' ? 'LinkedIn' : k === 'github' ? 'GitHub' : 'Website or portfolio'}</span>

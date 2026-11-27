@@ -117,6 +117,7 @@ Any host that runs a Dockerfile with a volume mounted at `/data` works the same 
 | `PUBLIC_URL` | Public address, used in emails and to mark cookies `Secure` |
 | `ADMIN_EMAILS` | Comma-separated emails that get the Admin tab and report emails |
 | `SMTP_URL`, `SMTP_PASS`, `MAIL_FROM` | Outgoing email for sign-in links and application updates. For Gmail: `SMTP_URL=smtps://you%40gmail.com@smtp.gmail.com:465`, `SMTP_PASS=<app password>`, `MAIL_FROM=HireMe <you@gmail.com>` |
+| `GITHUB_TOKEN` | Optional. A GitHub token (no scopes needed) for "Find me"; without one GitHub allows only a few searches an hour |
 | `EMAIL_DAILY_CAP` | Optional. Application emails per day across all developers (default 300) |
 | `DB_PATH` | SQLite file (default `server/data/hireme.db`; `/data/hireme.db` in Docker) |
 
@@ -135,6 +136,7 @@ server/   Express + SQLite API
   src/importer.js   Startup jobs from YC's dataset and Ashby/Greenhouse/Lever boards
   src/hn.js         Email-apply roles from Hacker News "Who is hiring?" threads
   src/hiring.js     Startups posting their own roles (#/hiring)
+  src/findme.js     "Find me": suggests the developer's GitHub (and the LinkedIn it links to)
   src/apply/        The applying worker (headless Chromium), form filler, Claude drafts
   src/resume-parse.js  Reads a resume PDF into suggested profile fields
   src/mail.js       SMTP (or log to console when not configured)
