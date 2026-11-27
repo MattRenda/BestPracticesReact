@@ -64,11 +64,30 @@ const matchCase = (src, word) => (src === src.toUpperCase() ? word.toUpperCase()
 export function fixLigatures(text) {
   return String(text)
     .normalize('NFKC') // ﬁ → fi, ﬂ → fl…
-    .replace(/[-�]/g, '') // glyphs with no letters behind them
+    .replace(/[-�\u0000-\u0008\u000B\u000C\u000E-\u001F\u00AD]/g, '') // glyphs with no letters behind them
     .replace(/\p{L}+/gu, (w) => {
       const fixed = BROKEN.get(w.toLowerCase());
       return fixed ? matchCase(w, fixed) : w;
-    });
+    })
+    .split('\n')
+    .map(joinSplitLigatures)
+    .join('\n');
+}
+
+/** Some PDFs leave a space where the ligature was: "So ware" → "Software", "e cient" → "efficient". */
+function joinSplitLigatures(line) {
+  const parts = line.split(/(\s+)/);
+  for (let i = 0; i + 2 < parts.length; i += 2) {
+    const a = parts[i];
+    const b = parts[i + 2];
+    if (!/^\p{L}+$/u.test(a) || !/^\p{L}+$/u.test(b) || REAL.has(b.toLowerCase())) continue;
+    const fixed = BROKEN.get((a + b).toLowerCase());
+    if (fixed) {
+      parts.splice(i, 3, matchCase(a, fixed));
+      i -= 2;
+    }
+  }
+  return parts.join('');
 }
 
 // ---------- sections ----------

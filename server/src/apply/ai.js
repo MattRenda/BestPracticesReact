@@ -66,7 +66,7 @@ export async function coverNote(env, profile, email, job) {
   const first = profile.name?.split(' ')[0] || '';
   return `Hi ${job.company} team,
 
-I'd like to apply for the ${job.title} role. ${profile.headline ? `I'm a ${profile.headline.replace(/^(a|an) /i, '')}` : 'I build software'}${profile.years ? ` with ${profile.years} years of experience` : ''}${profile.skills ? `, working mostly with ${profile.skills.split(',').slice(0, 4).join(',')}` : ''}.
+I'd like to apply for the ${job.title} role. ${profile.headline ? `I'm ${/^[aeiou]/i.test(profile.headline.replace(/^(a|an) /i, '')) ? 'an' : 'a'} ${profile.headline.replace(/^(a|an) /i, '').split(' · ')[0]}` : 'I build software'}${profile.years ? ` with ${profile.years} years of experience` : ''}${profile.skills ? `, working mostly with ${profile.skills.split(',').slice(0, 4).join(',')}` : ''}.
 
 ${profile.bio ? `${profile.bio}\n\n` : ''}I'd love to talk about how I can help ${job.company}.
 

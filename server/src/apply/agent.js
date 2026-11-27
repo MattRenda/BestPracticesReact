@@ -450,6 +450,15 @@ export function createApplier(
    * Startups that take applications by email get one: a cover note, the resume as a PDF and the
    * developer's links, sent "<Name> via HireMe" with the developer as Reply-To and on CC.
    */
+  /** The cover note without its own greeting and sign-off; the email adds those once. */
+  function noteBody(note) {
+    const lines = String(note || '').trim().split('\n');
+    if (/^(hi|hello|hey|dear)\b.*[,:!]?\s*$/i.test(lines[0] || '') && lines[0].length < 120) lines.shift();
+    const end = lines.findLastIndex((l) => /^(thanks|thank you|best|cheers|regards|best regards|sincerely)\b[^.]{0,20}[,!.]?\s*$/i.test(l.trim()));
+    if (end >= 0 && end >= lines.length - 3) lines.splice(end);
+    return lines.join('\n').trim();
+  }
+
   async function emailApplication({ app, role, startup, profile, job }) {
     if (!sendMail || !mailReady()) return { state: 'needs_you', error: 'Email isn’t set up on HireMe yet, so this one wasn’t sent. Apply by email yourself: ' + role.apply_email };
     const sentToday = db
@@ -467,15 +476,14 @@ export function createApplier(
     const text = [
       `Hi ${startup.name} team,`,
       '',
-      note.trim(),
+      noteBody(note),
       '',
-      '—',
+      role.source === 'hn' ? `I saw the ${role.title} role in the Hacker News “Who is hiring?” thread. My resume is attached.` : `I saw the ${role.title} role on HireMe. My resume is attached.`,
+      '',
+      'Thanks,',
       profile.name,
-      profile.headline,
-      [profile.location, profile.phone, profile.email].filter(Boolean).join(' · '),
+      [profile.headline, [profile.location, profile.phone, profile.email].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
       ...links.map(([k, u]) => `${k}: ${u}`),
-      '',
-      role.source === 'hn' ? `Resume attached. I saw the ${role.title} role in the Hacker News “Who is hiring?” thread.` : `Resume attached. I saw the ${role.title} role on HireMe.`,
     ]
       .filter((l) => l !== undefined && l !== null)
       .join('\n');

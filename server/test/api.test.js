@@ -325,6 +325,9 @@ test('startups list their own roles: work email at their domain, 50 or fewer, de
   const m = sent.find((x) => x.to === 'jobs@sprocket.example');
   assert.ok(m, 'emailed');
   assert.match(m.text, /role on HireMe\./);
+  if (process.env.SHOW_MAIL) console.log(m.text);
+  assert.equal(m.text.match(/^Hi /gm).length, 1, 'one greeting');
+  assert.equal(m.text.match(/^Thanks,/gm).length, 1, 'one sign-off');
   assert.equal((await f.req('GET', '/hiring')).body.roles[0].applications, 1);
 
   // Closing a role takes it out of the deck

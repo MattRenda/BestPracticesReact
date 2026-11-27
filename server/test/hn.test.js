@@ -45,3 +45,11 @@ test('early-stage signals count as small', async () => {
   assert.equal(earlyStageFrom('We are a Series C company, 400 people'), null);
   assert.equal(earlyStageFrom('Grow from seed to scale with our platform'), null);
 });
+
+test('an engineering team size is not the company size', async () => {
+  const { teamSizeFrom } = await import('../src/hn.js');
+  assert.equal(teamSizeFrom("You'll be joining a team of 15 engineers spread across North America"), null);
+  assert.equal(teamSizeFrom('We are a 10-person engineering team'), null);
+  assert.equal(teamSizeFrom('We are a team of 12 based in Austin'), 12);
+  assert.equal(teamSizeFrom('a 20-person startup'), 20);
+});

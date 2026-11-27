@@ -35,9 +35,11 @@ export function findEmail(text) {
 /** "We're a team of 12", "a 6-person team", "15 employees" → 12 / 6 / 15. Engineers-only counts don't bound the team. */
 export function teamSizeFrom(text) {
   const t = String(text || '');
+  // Only the whole company counts: "a team of 15 engineers" or "a 10-person engineering team" says nothing about headcount.
+  const PART = '(?:engineers?|engineering|developers?|devs?|dev|designers?|scientists?|product|data|platform|backend|frontend|mobile|ml|ai|research)';
   const m =
-    t.match(/\bteam of (?:about |around |~)?(\d{1,4})\b/i) ||
-    t.match(/\b(?:about |around |~)?(\d{1,4})[- ](?:person|people|employees?|member)\b/i) ||
+    t.match(new RegExp(`\\bteam of (?:about |around |~)?(\\d{1,4})\\b(?!\\+?\\s*(?:full[- ]time |talented |senior )?${PART}\\b)`, 'i')) ||
+    t.match(new RegExp(`\\b(?:about |around |~)?(\\d{1,4})[- ](?:person|people|employees?|member)\\b(?!\\s+${PART}\\b)`, 'i')) ||
     t.match(/\bwe(?:'re| are) (?:a |only |just )?(?:about |around |~)?(\d{1,4})(?: of us| people| person)\b/i);
   return m ? Number(m[1]) : null;
 }
@@ -113,8 +115,11 @@ export async function importHn(db, { fetchImpl = fetch, log = console, stats, mo
       // Size: YC's directory first, then what the post says. Unknown size stays out.
       const known = (domain && db.prepare('SELECT * FROM startups WHERE domain = ?').get(domain)) || db.prepare('SELECT * FROM startups WHERE lower(name) = lower(?)').get(p.company);
       // 0 = size not stated but the post is seed / founding-team, which is under 50 by definition.
-      const headcount = known?.headcount || p.teamSize || (p.stage ? 0 : null);
+      // A startup HireMe itself created from an earlier HN post is re-checked against the post each time.
+      const trusted = known && known.source !== 'hn' ? known.headcount : null;
+      const headcount = trusted || p.teamSize || (p.stage ? 0 : null);
       if (headcount == null || headcount > MAX_HEADCOUNT) continue;
+      if (known?.source === 'hn' && known.headcount !== headcount) db.prepare('UPDATE startups SET headcount = ? WHERE id = ?').run(headcount, known.id);
       if (known && ['rejected', 'pending', 'retired'].includes(known.status)) continue;
       let startupId = known?.id;
       if (!startupId) {
