@@ -72,6 +72,8 @@ export function createApp(
     dataDir,
     log,
     notify: (to, subject, text) => mailer.send({ to, subject, text }).catch(() => {}),
+    sendMail: (msg) => mailer.send(msg),
+    mailReady: () => mailer.configured || !production,
     appLink: (hash) => `${publicUrl || ''}/#/${hash}`,
     ...applierOptions,
   });
@@ -313,6 +315,19 @@ export function createApp(
   // A role is in the deck if its company is listed (not hidden or removed) and it has an application page.
   const LIVE = "r.status = 'open' AND r.apply_url IS NOT NULL AND s.status IN ('listed', 'approved') AND s.headcount <= @max";
 
+  // Only roles HireMe can submit by itself with one swipe: startups that take applications by email,
+  // plus form systems an admin has switched on (most guard their forms against automated submission).
+  const FORM_SYSTEMS = ['ashby', 'greenhouse', 'lever', 'other'];
+  const formSystems = () => {
+    const v = parse(db.prepare("SELECT value FROM settings WHERE key = 'form_ats'").get()?.value, []);
+    return Array.isArray(v) ? v.filter((x) => FORM_SYSTEMS.includes(x)) : [];
+  };
+  const systemOf = "COALESCE(NULLIF(s.ats, 'none'), 'other')";
+  const SENDABLE = () => {
+    const on = formSystems();
+    return `(r.apply_email IS NOT NULL${on.length ? ` OR ${systemOf} IN (${on.map((x) => `'${x}'`).join(', ')})` : ''})`;
+  };
+
   app.get('/api/deck', requireRole('dev'), (req, res) => {
     const me = getProfile(req.user.id);
     if (!profileComplete(me)) return res.status(409).json({ error: 'Finish your profile first', needsProfile: true });
@@ -322,7 +337,7 @@ export function createApp(
         `SELECT r.*, s.name AS s_name, s.website AS s_website, s.domain AS s_domain, s.headcount AS s_headcount, s.stage AS s_stage,
                 s.one_liner AS s_one_liner, s.about AS s_about, s.location AS s_location
          FROM roles r JOIN startups s ON s.id = r.startup_id
-         WHERE ${LIVE}
+         WHERE ${LIVE} AND ${SENDABLE()}
            AND NOT EXISTS (SELECT 1 FROM dev_swipes d WHERE d.role_id = r.id AND d.dev_id = @me)
            AND NOT EXISTS (SELECT 1 FROM reports x WHERE x.reporter_id = @me AND x.target_type = 'startup' AND x.target_id = s.id)
          ORDER BY COALESCE(r.posted_at, r.created_at) DESC LIMIT 2000`,
@@ -589,7 +604,7 @@ export function createApp(
     const stats = {
       devs: db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'dev' AND is_guest = 0").get().n,
       guests: db.prepare('SELECT COUNT(*) n FROM users WHERE is_guest = 1').get().n,
-      openRoles: db.prepare(`SELECT COUNT(*) n FROM roles r JOIN startups s ON s.id = r.startup_id WHERE ${LIVE}`).get({ max: MAX_HEADCOUNT }).n,
+      openRoles: db.prepare(`SELECT COUNT(*) n FROM roles r JOIN startups s ON s.id = r.startup_id WHERE ${LIVE} AND ${SENDABLE()}`).get({ max: MAX_HEADCOUNT }).n,
       listed: db.prepare("SELECT COUNT(*) n FROM startups WHERE status IN ('listed', 'approved')").get().n,
       submitted: db.prepare("SELECT COUNT(*) n FROM applications WHERE state = 'submitted'").get().n,
     };
@@ -616,6 +631,34 @@ export function createApp(
     const already = importer.running;
     importer.start().catch((e) => log.error?.('import failed', e));
     res.status(202).json({ running: true, already });
+  });
+
+  /** How each way of applying is doing, and which form systems are in the deck. */
+  app.get('/api/admin/apply-methods', requireAdmin, (_req, res) => {
+    const on = formSystems();
+    const methods = [
+      { id: 'email', label: 'Email (Hacker News “Who is hiring?”)', always: true },
+      ...FORM_SYSTEMS.map((id) => ({ id, label: id === 'other' ? 'Other forms' : id[0].toUpperCase() + id.slice(1), enabled: on.includes(id) })),
+    ];
+    for (const m of methods) {
+      const where = m.id === 'email' ? 'r.apply_email IS NOT NULL' : `r.apply_email IS NULL AND ${systemOf} = '${m.id}'`;
+      m.openRoles = db.prepare(`SELECT COUNT(*) n FROM roles r JOIN startups s ON s.id = r.startup_id WHERE ${LIVE} AND ${where}`).get({ max: MAX_HEADCOUNT }).n;
+      const a = db
+        .prepare(
+          `SELECT COUNT(*) tried, SUM(a.state = 'submitted') sent, SUM(a.state IN ('needs_you', 'failed')) stuck
+           FROM applications a JOIN roles r ON r.id = a.role_id JOIN startups s ON s.id = r.startup_id
+           WHERE ${where} AND a.state IN ('submitted', 'needs_you', 'failed')`,
+        )
+        .get();
+      Object.assign(m, { tried: a.tried, sent: a.sent || 0, stuck: a.stuck || 0 });
+    }
+    res.json(methods);
+  });
+
+  app.post('/api/admin/apply-methods', requireAdmin, (req, res) => {
+    const on = (Array.isArray(req.body?.enabled) ? req.body.enabled : []).filter((x) => FORM_SYSTEMS.includes(x));
+    db.prepare("INSERT INTO settings (key, value) VALUES ('form_ats', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").run(JSON.stringify(on));
+    res.json({ enabled: on });
   });
 
   app.get('/api/admin/applier', requireAdmin, (_req, res) => {

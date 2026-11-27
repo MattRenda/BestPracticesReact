@@ -1,4 +1,4 @@
-import type { AdminQueue, Application, DevProfile, ImportRun, Me, RoleCard, SavedRole, Startup, SwipeResult } from './types'
+import type { AdminQueue, ApplyMethod, Application, DevProfile, ImportRun, Me, RoleCard, SavedRole, Startup, SwipeResult } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -61,6 +61,8 @@ export const api = {
   report: (id: number, reason: string, detail = '') => call<{ ok: boolean }>('POST', '/reports', { type: 'startup', id, reason, detail }),
 
   adminQueue: () => call<AdminQueue>('GET', '/admin/queue'),
+  applyMethods: () => call<ApplyMethod[]>('GET', '/admin/apply-methods'),
+  setApplyMethods: (enabled: string[]) => call<{ enabled: string[] }>('POST', '/admin/apply-methods', { enabled }),
   setListed: (id: number, listed: boolean) => call<Startup>('POST', `/admin/startups/${id}`, { status: listed ? 'listed' : 'rejected' }),
   resolveReport: (id: number) => call<void>('POST', `/admin/reports/${id}/resolve`),
   importStatus: () => call<{ running: boolean; runs: ImportRun[] }>('GET', '/admin/import'),

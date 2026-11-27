@@ -170,6 +170,17 @@ export interface HiddenStartup {
   headcount: number
 }
 
+export interface ApplyMethod {
+  id: string
+  label: string
+  always?: boolean
+  enabled?: boolean
+  openRoles: number
+  tried: number
+  sent: number
+  stuck: number
+}
+
 export interface AdminQueue {
   reports: Report[]
   hidden: HiddenStartup[]

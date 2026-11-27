@@ -113,7 +113,7 @@ export function Landing({ me, onStart }: { me?: Me; onStart: () => void }) {
               <strong>Startups only.</strong> Every company has 50 people or fewer. No big companies, ever.
             </li>
             <li>
-              <strong>No recruiters.</strong> Roles come straight from startups’ own job boards, and staffing agencies are filtered out.
+              <strong>No recruiters.</strong> Roles come straight from startups, including Hacker News “Who is hiring?” posts, and staffing agencies are filtered out.
             </li>
             <li>
               <strong>Swipe and done.</strong> HireMe answers the extra questions from your resume, positive but never made up, and shows you exactly what it sent.

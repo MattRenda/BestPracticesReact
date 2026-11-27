@@ -11,10 +11,11 @@ const sent = [];
 const mailer = { configured: false, sent, send: async (m) => void sent.push(m) };
 const quiet = { info() {}, warn() {}, error() {} };
 
-let server, base, db;
+let server, base, db, app;
 before(async () => {
   db = openDb(':memory:');
-  const app = createApp(db, { mailer, adminEmails: ['admin@hireme.test'], log: quiet, ipLimit: 1000, dataDir: mkdtempSync(path.join(tmpdir(), 'hireme-')), applierOptions: { autoStart: false } });
+  db.prepare("INSERT INTO settings (key, value) VALUES ('form_ats', '[\"other\"]')").run(); // the sample roles are form-based
+  app = createApp(db, { mailer, adminEmails: ['admin@hireme.test'], log: quiet, ipLimit: 1000, dataDir: mkdtempSync(path.join(tmpdir(), 'hireme-')), applierOptions: { autoStart: false, gapMs: 0 } });
   server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}/api`;
@@ -215,6 +216,44 @@ test('guests who sign in to an existing account keep that account’s profile an
   const me = (await g.req('GET', '/me')).body;
   assert.equal(me.profile.name, 'Real Name');
   assert.equal(db.prepare("SELECT COUNT(*) n FROM users WHERE is_guest = 1 AND id NOT IN (SELECT user_id FROM sessions)").get().n, 0, 'the guest account is gone');
+});
+
+test('only roles HireMe can send by itself are in the deck; email ones go out as an application email', async () => {
+  const sid = Number(db.prepare("INSERT INTO startups (name, website, domain, headcount, status, source) VALUES ('Mailbox Co', 'https://mailbox.example', 'mailbox.example', 9, 'listed', 'hn')").run().lastInsertRowid);
+  const rid = Number(
+    db
+      .prepare("INSERT INTO roles (startup_id, title, skills, work_mode, status, source, apply_url, apply_email, external_id) VALUES (?, 'Backend Engineer', 'Node.js', 'remote', 'open', 'hn', 'https://news.ycombinator.com/item?id=1', 'jobs@mailbox.example', 'hn:1')")
+      .run(sid).lastInsertRowid,
+  );
+  const ashby = listedRole({ name: 'Formful' });
+  db.prepare("UPDATE startups SET ats = 'ashby' WHERE id = ?").run(ashby.sid);
+
+  const dev = client();
+  await dev.signIn('mailer@example.com');
+  await dev.req('PUT', '/profile', { ...READY, links: { github: 'https://github.com/dana' } });
+  const data = readFileSync(new URL('./fixtures/resume.pdf', import.meta.url)).toString('base64');
+  await dev.req('POST', '/profile/resume', { name: 'Dana Resume.pdf', data });
+  const ids = (await dev.req('GET', '/deck')).body.map((c) => c.id);
+  assert.ok(ids.includes(rid), 'email roles are always in');
+  assert.ok(!ids.includes(ashby.rid), 'Ashby forms are off unless an admin turns them on');
+
+  // Earlier tests left form applications to a made-up site in the queue; this test is only about email
+  db.prepare("UPDATE applications SET state = 'canceled' WHERE state = 'queued'").run();
+  const swipe = (await dev.req('POST', `/deck/${rid}`, { liked: true })).body;
+  assert.equal(swipe.application.state, 'queued');
+  await app.locals.applier.tick();
+  const a = (await dev.req('GET', '/applications')).body.find((x) => x.role_id === rid);
+  assert.equal(a.state, 'submitted', a.error);
+  assert.deepEqual(a.answers[0], { question: 'Sent by email to', answer: 'jobs@mailbox.example', source: 'email' });
+  const m = sent.find((x) => x.to === 'jobs@mailbox.example');
+  assert.equal(m.cc, 'mailer@example.com');
+  assert.equal(m.replyTo, 'mailer@example.com');
+  assert.equal(m.fromName, 'Dana Dev via HireMe');
+  assert.equal(m.subject, 'Application: Backend Engineer — Dana Dev');
+  assert.deepEqual(m.attachments.map((x) => x.filename), ['Dana Resume.pdf']);
+  assert.ok(m.attachments[0].content.length > 1000, 'the actual PDF');
+  assert.match(m.text, /^Hi Mailbox Co team,/);
+  assert.match(m.text, /GitHub: https:\/\/github\.com\/dana/);
 });
 
 test('accounts can be deleted', async () => {

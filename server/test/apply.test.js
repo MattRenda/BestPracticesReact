@@ -31,6 +31,7 @@ before(async () => {
   siteBase = `http://127.0.0.1:${site.address().port}`;
 
   db = openDb(':memory:');
+  db.prepare("INSERT INTO settings (key, value) VALUES ('form_ats', '[\"other\"]')").run(); // the test form counts as "other"
   app = createApp(db, {
     mailer: { configured: false, send: async () => {} },
     log: { info() {}, warn() {}, error() {} },

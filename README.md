@@ -27,7 +27,13 @@ So developers have roles to swipe on from day one, the server imports engineerin
 2. **Job boards** are found from links on the company's website (homepage, `/careers`, `/jobs`, respecting robots.txt). If there's no link, the company's name is tried on Ashby, Greenhouse and Lever, and a guessed board only counts if its posts mention the company.
 3. **Roles** come from those boards' public APIs. Only engineering titles are kept; skills are picked out of the description. Roles that come down from the board are closed, and startups that grow past 50 are retired.
 
+4. **Hacker News "Who is hiring?"** (`server/src/hn.js`): the last two monthly threads are read through HN's public Algolia API. A post is kept when it's for an engineering role, says to apply by email (not "apply on our site", not a recruiter or agency), and the company is confirmed small: a YC company with ≤50 people, a stated team size of 50 or under, or a seed / pre-seed / founding-engineer post. Posts that drop out of the threads are closed.
+
 ycombinator.com itself is never scraped; its terms of use don't allow it.
+
+### What's in the deck
+
+Only roles HireMe can actually send with one swipe are shown. **Email roles** (from Hacker News) are always on: HireMe emails the company from `MAIL_FROM` as "Name via HireMe", reply-to and cc the developer, with a short note and their resume attached. **Form roles** (Ashby, Greenhouse, Lever, other sites) are off by default, because their bot protection (reCAPTCHA, hCaptcha, Turnstile) often blocks automated submissions; admins can switch each system on in **Admin → What's in the deck**, which shows how many were tried, sent and stuck. Email sending is capped at `EMAIL_DAILY_CAP` per day (default 300, under Gmail's limit); the rest wait for the next day.
 
 Admins can run or watch imports from the Admin tab. Set `IMPORT_JOBS=off` to disable the schedule.
 
@@ -102,6 +108,7 @@ Any host that runs a Dockerfile with a volume mounted at `/data` works the same 
 | `PUBLIC_URL` | Public address, used in emails and to mark cookies `Secure` |
 | `ADMIN_EMAILS` | Comma-separated emails that get the Admin tab and report emails |
 | `SMTP_URL`, `SMTP_PASS`, `MAIL_FROM` | Outgoing email for sign-in links and application updates. For Gmail: `SMTP_URL=smtps://you%40gmail.com@smtp.gmail.com:465`, `SMTP_PASS=<app password>`, `MAIL_FROM=HireMe <you@gmail.com>` |
+| `EMAIL_DAILY_CAP` | Optional. Application emails per day across all developers (default 300) |
 | `DB_PATH` | SQLite file (default `server/data/hireme.db`; `/data/hireme.db` in Docker) |
 
 Back up the SQLite file regularly (for example `fly ssh console -C "sqlite3 /data/hireme.db .dump"` or a volume snapshot).
@@ -117,6 +124,7 @@ server/   Express + SQLite API
   src/rules.js      Agency check and domain helpers
   src/app.js        Profiles, resume upload, deck, swipes, applications, reports, admin
   src/importer.js   Startup jobs from YC's dataset and Ashby/Greenhouse/Lever boards
+  src/hn.js         Email-apply roles from Hacker News "Who is hiring?" threads
   src/apply/        The applying worker (headless Chromium), form filler, Claude drafts
   src/resume-parse.js  Reads a resume PDF into suggested profile fields
   src/mail.js       SMTP (or log to console when not configured)

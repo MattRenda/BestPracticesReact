@@ -93,7 +93,23 @@ async function launchBrowser(env) {
   return chromium.launch(opts);
 }
 
-export function createApplier(db, { dataDir, env = process.env, log = console, notify = () => {}, appLink = () => '', gapMs, pollMs = 15_000, dailyCap = 30, autoStart = true } = {}) {
+export function createApplier(
+  db,
+  {
+    dataDir,
+    env = process.env,
+    log = console,
+    notify = () => {},
+    sendMail = null,
+    mailReady = () => !!sendMail,
+    appLink = () => '',
+    gapMs,
+    pollMs = 15_000,
+    dailyCap = 30,
+    emailDailyCap = Number(env.EMAIL_DAILY_CAP) || 300, // stays under the mail provider's daily limit
+    autoStart = true,
+  } = {},
+) {
   const resumesDir = path.join(dataDir, 'resumes');
   const shotsDir = path.join(dataDir, 'shots');
   mkdirSync(resumesDir, { recursive: true });
@@ -417,15 +433,61 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
     const profile = profileFor(app.dev_id);
     if (!role || role.status !== 'open') return { state: 'failed', error: 'This role was taken down' };
     if (!profile) return { state: 'failed', error: 'Profile not found' };
+    const job = { company: startup.name, title: role.title, description: role.description };
+    if (role.apply_email) return emailApplication({ app, role, startup, profile, job });
     const url = targetUrl(role, startup);
     if (!url) return { state: 'failed', error: 'No application page for this role' };
-    const job = { company: startup.name, title: role.title, description: role.description };
     // "Review before sending": fill everything, stop short of Submit, and wait for the developer's OK.
     if (profile.review_first && !app.approved) {
       const r = await applyTo({ url, profile, job, practice: true });
       return r.state === 'practiced' ? { ...r, state: 'review', error: '' } : r;
     }
     return applyTo({ url, profile, job });
+  }
+
+  /**
+   * Startups that take applications by email get one: a cover note, the resume as a PDF and the
+   * developer's links, sent "<Name> via HireMe" with the developer as Reply-To and on CC.
+   */
+  async function emailApplication({ app, role, startup, profile, job }) {
+    if (!sendMail || !mailReady()) return { state: 'needs_you', error: 'Email isn’t set up on HireMe yet, so this one wasn’t sent. Apply by email yourself: ' + role.apply_email };
+    const sentToday = db
+      .prepare(
+        `SELECT COUNT(*) n FROM applications a JOIN roles r ON r.id = a.role_id
+         WHERE r.apply_email IS NOT NULL AND a.state = 'submitted' AND a.submitted_at > datetime('now', '-1 day')`,
+      )
+      .get().n;
+    if (sentToday >= emailDailyCap) return { state: 'queued', error: '', retryLater: true };
+    const note = await coverNote(env, profile, profile.email, job);
+    const answers = [{ question: 'Sent by email to', answer: role.apply_email, source: 'email' }];
+    if (profile.review_first && !app.approved) return { state: 'review', coverNote: note, answers };
+    const resume = await resumeFor(profile);
+    const links = [['LinkedIn', profile.links?.linkedin], ['GitHub', profile.links?.github], ['Portfolio', profile.links?.portfolio]].filter(([, u]) => u);
+    const text = [
+      `Hi ${startup.name} team,`,
+      '',
+      note.trim(),
+      '',
+      '—',
+      profile.name,
+      profile.headline,
+      [profile.location, profile.phone, profile.email].filter(Boolean).join(' · '),
+      ...links.map(([k, u]) => `${k}: ${u}`),
+      '',
+      `Resume attached. I saw the ${role.title} role in the Hacker News “Who is hiring?” thread.`,
+    ]
+      .filter((l) => l !== undefined && l !== null)
+      .join('\n');
+    await sendMail({
+      to: role.apply_email,
+      cc: profile.email,
+      replyTo: profile.email,
+      fromName: `${profile.name} via HireMe`,
+      subject: `Application: ${role.title} — ${profile.name}`,
+      text,
+      attachments: [{ filename: resume.name, content: Buffer.from(resume.buffer), contentType: 'application/pdf' }],
+    });
+    return { state: 'submitted', coverNote: note, answers };
   }
 
   async function tick() {
@@ -442,6 +504,12 @@ export function createApplier(db, { dataDir, env = process.env, log = console, n
           result = await processOne(app);
         } catch (e) {
           result = { state: 'failed', error: String(e.message || e).split('\n')[0].slice(0, 200) };
+        }
+        if (result.retryLater) {
+          // Daily email limit reached: put it back and stop until the next poll.
+          db.prepare("UPDATE applications SET state = 'queued' WHERE id = ?").run(app.id);
+          state.current = null;
+          break;
         }
         record(app, result);
         state.last = { id: app.id, state: result.state, error: result.error, at: new Date().toISOString() };

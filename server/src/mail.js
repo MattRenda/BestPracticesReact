@@ -21,14 +21,19 @@ export function createMailer(env = process.env, log = console) {
   return {
     configured: !!transport,
     sent,
-    async send({ to, subject, text }) {
-      sent.push({ to, subject, text });
+    /**
+     * `fromName` shows as "<fromName> <MAIL_FROM address>" (e.g. "Dana Dev via HireMe"); `replyTo`
+     * and `cc` let replies to an application go straight to the developer.
+     */
+    async send({ to, subject, text, cc, replyTo, fromName, attachments }) {
+      sent.push({ to, subject, text, cc, replyTo, fromName, attachments: (attachments || []).map((a) => a.filename) });
       if (sent.length > 50) sent.shift();
       if (!transport) {
-        log.info?.(`[mail → ${to}] ${subject}\n${text}\n`);
+        log.info?.(`[mail → ${to}${cc ? `, cc ${cc}` : ''}] ${subject}\n${text}\n`);
         return;
       }
-      await transport.sendMail({ from, to, subject, text });
+      const address = from.match(/<([^>]+)>/)?.[1] || from;
+      await transport.sendMail({ from: fromName ? { name: fromName, address } : from, to, cc, replyTo, subject, text, attachments });
     },
   };
 }

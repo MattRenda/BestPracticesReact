@@ -179,7 +179,10 @@ export function openDb(file = DB_PATH) {
     ['external_id', 'TEXT'],
     ['apply_url', 'TEXT'],
     ['posted_at', 'TEXT'],
+    ['apply_email', 'TEXT'], // the startup takes applications by email (Hacker News "Who is hiring?" posts)
   ]);
+  // Small key/value settings an admin can change (e.g. which form systems HireMe applies through).
+  db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
   // Guests: people who started without signing up. A placeholder email until they add a real one.
   addColumns('users', [
     ['is_guest', 'INTEGER NOT NULL DEFAULT 0'],

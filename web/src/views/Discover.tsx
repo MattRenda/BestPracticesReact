@@ -140,8 +140,8 @@ function RoleCardView({ c, onReported }: { c: RoleCard; onReported: () => void }
       <header className="card-head">
         <h2 className="card-company">{s.name}</h2>
         <p className="card-size">
-          {s.headcount} {s.headcount === 1 ? 'person' : 'people'}
-          {s.stage && ` · ${s.stage}`}
+          {s.headcount > 0 ? `${s.headcount} ${s.headcount === 1 ? 'person' : 'people'}` : s.stage || 'Small team'}
+          {s.headcount > 0 && s.stage && ` · ${s.stage}`}
           {s.location && ` · ${s.location}`}
         </p>
         <p className="card-title">{c.title}</p>

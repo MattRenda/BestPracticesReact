@@ -42,6 +42,19 @@ const pages = {
   'https://quietlab.example/robots.txt': 'User-agent: *\nDisallow: /careers',
   'https://quietlab.example/careers': '<a href="https://jobs.lever.co/wrong-board">should not be read</a>',
 };
+// Hacker News "Who is hiring?": one thread, a few posts (only two qualify)
+const HN_SEARCH = 'https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=12';
+pages[HN_SEARCH] = { hits: [{ objectID: '9000', title: 'Ask HN: Who is hiring? (November 2026)' }, { objectID: '8999', title: 'Ask HN: Who wants to be hired? (November 2026)' }] };
+pages['https://hn.algolia.com/api/v1/items/9000'] = {
+  children: [
+    { id: 9101, created_at: '2026-11-02T16:00:00Z', text: 'Tiny Rocket (YC W25) | Senior Backend Engineer | Remote (US) | <a href="https:&#x2F;&#x2F;tinyrocket.example">https://tinyrocket.example</a><p>We build scheduling for clinics in Node.js and Postgres.<p>Email jobs [at] tinyrocket [dot] example with your resume.' },
+    { id: 9102, created_at: '2026-11-02T17:00:00Z', text: 'Lumen Labs | Full-stack Engineer (React, Python) | San Francisco, CA | ONSITE<p>We&#x27;re a team of 8 building tools for labs.<p>Apply: hiring@lumenlabs.example' },
+    { id: 9103, text: 'MegaCorp | Software Engineer | NYC<p>We have 400 employees. Email jobs@megacorp.example' },
+    { id: 9104, text: 'NoMail Inc | Backend Engineer | Remote<p>A team of 5. Apply at <a href="https://jobs.ashbyhq.com/nomail">our board</a>' },
+    { id: 9105, text: 'Acme | Sales Lead | Remote<p>A team of 4. sales-lead@acme.example' },
+    { id: 9106, text: 'Mystery Co | Backend Engineer | Remote<p>Email me: dev@mystery.example' },
+  ],
+};
 const requested = [];
 async function fakeFetch(url) {
   requested.push(url);
@@ -118,8 +131,22 @@ test('import: small YC startups and their developer roles, nothing else', async 
   assert.deepEqual(stats.errors, []);
   const db = app.locals.db;
   const startups = db.prepare('SELECT name, status, headcount, stage, ats, ats_slug FROM startups ORDER BY name').all();
-  assert.deepEqual(startups.map((s) => s.name), ['Quiet Lab', 'Sphere', 'Tiny Rocket'], 'listed even without a job board; never BigCo or Staffwise');
-  assert.equal(stats.startups_added, 3);
+  assert.deepEqual(startups.map((s) => s.name), ['Lumen Labs', 'Quiet Lab', 'Sphere', 'Tiny Rocket'], 'listed even without a job board; never BigCo or Staffwise');
+  assert.equal(stats.startups_added, 4);
+
+  // Hacker News: only engineering posts that take email applications, at startups confirmed at 50 or fewer
+  const hn = db.prepare("SELECT r.title, r.apply_email, r.apply_url, r.work_mode, s.name, s.headcount, s.source FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.source = 'hn' ORDER BY s.name").all();
+  assert.deepEqual(
+    hn.map((r) => [r.name, r.title, r.apply_email, r.headcount]),
+    [
+      ['Lumen Labs', 'Full-stack Engineer (React, Python)', 'hiring@lumenlabs.example', 8],
+      ['Tiny Rocket', 'Senior Backend Engineer', 'jobs@tinyrocket.example', 6],
+    ],
+    'size from the post or from YC; never MegaCorp (400), NoMail (no email), Acme (sales) or Mystery (size unknown)',
+  );
+  assert.equal(hn[1].source, 'yc', 'joined to the YC startup it already knows');
+  assert.equal(hn[1].apply_url, 'https://news.ycombinator.com/item?id=9101');
+  assert.equal(hn[1].work_mode, 'remote');
   const byName = Object.fromEntries(startups.map((s) => [s.name, s]));
   assert.equal(byName['Tiny Rocket'].ats, 'ashby', 'found from the link on its homepage');
   assert.equal(byName['Tiny Rocket'].stage, 'YC W25');
@@ -144,7 +171,7 @@ test('import: small YC startups and their developer roles, nothing else', async 
   const again = await app.locals.importer.start();
   assert.deepEqual(again.errors, []);
   assert.equal(again.roles_added, 0);
-  assert.equal(again.roles_updated, 2);
+  assert.equal(again.roles_updated, 4);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM roles WHERE source = 'ats'").get().n, 2);
   assert.equal(db.prepare("SELECT title FROM roles WHERE external_id = 'greenhouse:7'").get().title, 'Staff Software Engineer');
 });
@@ -153,11 +180,21 @@ test('developers see imported roles, ranked by shared skills; a yes starts an ap
   const dev = client();
   await dev.signIn('dev@example.com', 'dev');
   await dev.req('PUT', '/profile', { name: 'Dee Example', headline: 'Engineer', skills: 'React, Node.js' });
-  const deck = (await dev.req('GET', '/deck')).body;
-  const tr = deck.find((c) => c.startup.name === 'Tiny Rocket');
+  // By default only roles HireMe can send by itself: the email ones
+  let deck = (await dev.req('GET', '/deck')).body;
+  assert.deepEqual(deck.map((c) => c.title).sort(), ['Full-stack Engineer (React, Python)', 'Senior Backend Engineer']);
+
+  // An admin switches Ashby forms on
+  const admin = client();
+  await admin.signIn('admin@hireme.test', 'dev');
+  const methods = (await admin.req('GET', '/admin/apply-methods')).body;
+  assert.deepEqual(methods.map((m) => [m.id, m.openRoles]).slice(0, 2), [['email', 2], ['ashby', 1]]);
+  await admin.req('POST', '/admin/apply-methods', { enabled: ['ashby'] });
+  deck = (await dev.req('GET', '/deck')).body;
+  const tr = deck.find((c) => c.title === 'Founding Engineer');
   assert.ok(tr.apply_url.includes('ashbyhq.com'));
   assert.deepEqual(tr.sharedSkills.sort(), ['node.js', 'react']);
-  assert.equal(deck[0].startup.name, 'Tiny Rocket', 'more shared skills ranks first');
+  assert.ok(!deck.some((c) => c.startup.name === 'Quiet Lab'), 'Greenhouse still off');
 
   const r = (await dev.req('POST', `/deck/${tr.id}`, { liked: true })).body;
   assert.ok(r.apply_url.includes('/application'));

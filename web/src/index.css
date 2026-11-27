@@ -580,3 +580,5 @@ a { color: var(--moss); }
 .answer-once em { font-style: normal; font-weight: 400; }
 .form-answers { margin: 10px 0 4px; }
 .form-answers summary { cursor: pointer; font-weight: 700; font-size: var(--t-sm); margin-bottom: 8px; }
+.toggle.compact { margin: 0; flex: none; }
+.admin-list.methods li { align-items: center; }

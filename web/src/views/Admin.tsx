@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import type { AdminQueue, ImportRun } from '../types'
+import type { AdminQueue, ApplyMethod, ImportRun } from '../types'
 import { Toast } from '../components/ui'
 import { ago, useToast } from '../lib'
 
@@ -33,6 +33,7 @@ export function AdminView({ onChange }: { onChange: () => void }) {
           {q.stats.devs} developers · {q.stats.openRoles} live roles at {q.stats.listed} startups · {q.stats.submitted} applications sent
         </p>
       </header>
+      <ApplyMethodsPanel onChange={onChange} />
       <ImportPanel onDone={load} />
       <ApplierPanel />
 
@@ -79,7 +80,7 @@ export function AdminView({ onChange }: { onChange: () => void }) {
                     {s.domain}
                   </a>
                   <p className="muted small">
-                    {s.headcount} people · {s.status === 'pending' ? 'hidden after reports' : 'removed by an admin'}
+                    {s.headcount || 'Early-stage,'} {s.headcount ? 'people' : 'size not stated'} · {s.status === 'pending' ? 'hidden after reports' : 'removed by an admin'}
                     {s.flags && ` · ${s.flags}`}
                   </p>
                 </div>
@@ -215,6 +216,62 @@ function ApplierPanel() {
         </div>
       )}
       {error && <p className="error">{error}</p>}
+    </section>
+  )
+}
+
+/** Where the deck's roles come from: email always; form systems only when they let HireMe submit. */
+function ApplyMethodsPanel({ onChange }: { onChange: () => void }) {
+  const [methods, setMethods] = useState<ApplyMethod[] | null>(null)
+  const [error, setError] = useState('')
+  const load = useCallback(() => api.applyMethods().then(setMethods, (e: Error) => setError(e.message)), [])
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function toggle(id: string, on: boolean) {
+    if (!methods) return
+    const enabled = methods.filter((m) => !m.always && (m.id === id ? on : m.enabled)).map((m) => m.id)
+    try {
+      await api.setApplyMethods(enabled)
+      load()
+      onChange()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  return (
+    <section className="group">
+      <h2 className="group-title">What’s in the deck</h2>
+      <p className="small">
+        Only roles HireMe can send by itself. Email applications always work. Most form systems guard against automated submission, so they stay off unless
+        their numbers show HireMe getting through.
+      </p>
+      {error && <p className="error">{error}</p>}
+      {methods && (
+        <ul className="admin-list methods">
+          {methods.map((m) => (
+            <li key={m.id}>
+              <div>
+                <strong>{m.label}</strong>
+                <p className="muted small">
+                  {m.openRoles} open roles · {m.tried ? `${m.sent} of ${m.tried} sent${m.stuck ? `, ${m.stuck} stuck` : ''}` : 'no applications yet'}
+                </p>
+              </div>
+              {m.always ? (
+                <span className="pill ok">Always on</span>
+              ) : (
+                <label className="toggle compact">
+                  <input type="checkbox" checked={!!m.enabled} onChange={(e) => toggle(m.id, e.target.checked)} />
+                  <span className="toggle-track" aria-hidden="true" />
+                  <span className="sr-only">Show {m.label} roles in the deck</span>
+                </label>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }

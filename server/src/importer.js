@@ -8,6 +8,7 @@
 // Imported startups are 'listed' while they're hiring and have 50 or fewer people; then 'retired'.
 import { MAX_HEADCOUNT } from './db.js';
 import { looksLikeAgency, siteDomain } from './rules.js';
+import { importHn } from './hn.js';
 
 const YC_SOURCES = [
   'https://yc-oss.github.io/api/companies/hiring.json',
@@ -165,7 +166,7 @@ export async function fetchBoard(ats, slug, get) {
 
 // ---------- the import ----------
 
-export function createImporter(db, { fetchImpl = fetch, log = console, concurrency = 6 } = {}) {
+export function createImporter(db, { fetchImpl = fetch, log = console, concurrency = 6, hn = true } = {}) {
   let running = null;
 
   /** JSON GET; returns null on 404 so callers can treat "no board" quietly. */
@@ -391,6 +392,13 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
     } catch (e) {
       stats.errors.unshift(e.message);
     }
+    // Startups that take applications by email, from Hacker News' "Who is hiring?" threads
+    if (hn && !limit)
+      try {
+        await importHn(db, { fetchImpl, log, stats });
+      } catch (e) {
+        stats.errors.push(`Hacker News: ${e.message}`);
+      }
     db.prepare(
       `UPDATE import_runs SET finished_at = datetime('now'), companies = ?, startups_added = ?, boards = ?, roles_added = ?, roles_updated = ?,
          roles_closed = ?, errors = ? WHERE id = ?`,
