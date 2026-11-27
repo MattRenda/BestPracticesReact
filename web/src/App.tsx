@@ -5,6 +5,7 @@ import { Landing, SignIn } from './views/Landing'
 import { Discover } from './views/Discover'
 import { Applications } from './views/Applications'
 import { DevProfileView } from './views/DevProfile'
+import { Onboarding } from './views/Onboarding'
 import { AdminView } from './views/Admin'
 import { Privacy, Terms } from './views/Legal'
 
@@ -67,17 +68,18 @@ export default function App() {
   if (location.pathname === '/terms') return <Terms />
   if (route.page === 'signin' && route.arg) return <SignIn token={route.arg} onDone={refresh} />
   if (!me) return offline ? <p className="pad">Can’t reach HireMe right now. Check your connection and reload.</p> : null
-  if (!me.user) return <Landing />
+  if (!me.user) return <Landing onStart={refresh} />
 
   const { user, counts } = me
-  const tabs = ['discover', 'applications', 'profile', ...(user.isAdmin ? ['admin'] : [])]
+  // Guests (started without signing up) can't apply until they add an email, so no Applications tab yet.
+  const tabs = ['discover', ...(user.isGuest ? [] : ['applications']), 'profile', ...(user.isAdmin ? ['admin'] : [])]
   const labels: Record<string, string> = { discover: 'Discover', applications: 'Applications', profile: 'Profile', admin: 'Admin' }
   const badges: Record<string, number> = { applications: counts?.needsYou ?? 0, admin: counts?.openReports ?? 0 }
 
-  // Old links to #/matches go to Applications. New developers set up their profile first.
-  let page = route.page === 'matches' ? 'applications' : tabs.includes(route.page) ? route.page : 'discover'
-  if (!me.profileComplete && page === 'discover') page = 'profile'
-  const onboarding = !me.profileComplete
+  // Old links to #/matches go to Applications.
+  const page = route.page === 'matches' ? 'applications' : tabs.includes(route.page) ? route.page : 'discover'
+  // New people get to know HireMe a few taps at a time before anything else.
+  if (!me.profileComplete && page !== 'admin') return <Onboarding isGuest={user.isGuest} onDone={refresh} />
 
   return (
     <div className="shell">
@@ -100,18 +102,24 @@ export default function App() {
         <div className="rail-foot">
           <p className="rail-who">
             {me.profile?.name || 'Developer'}
-            <span>{user.email}</span>
+            <span>{user.isGuest ? 'Not saved yet' : user.email}</span>
           </p>
-          <button
-            className="link-btn"
-            onClick={async () => {
-              await api.logout()
-              location.hash = ''
-              refresh()
-            }}
-          >
-            Sign out
-          </button>
+          {user.isGuest ? (
+            <a className="link-btn" href="#/profile">
+              Save your profile
+            </a>
+          ) : (
+            <button
+              className="link-btn"
+              onClick={async () => {
+                await api.logout()
+                location.hash = ''
+                refresh()
+              }}
+            >
+              Sign out
+            </button>
+          )}
         </div>
       </aside>
       <main className="main">
@@ -122,7 +130,7 @@ export default function App() {
         )}
         {page === 'discover' && <Discover onChange={refresh} />}
         {page === 'applications' && <Applications onChange={refresh} />}
-        {page === 'profile' && <DevProfileView onboarding={onboarding} onSaved={refresh} />}
+        {page === 'profile' && <DevProfileView isGuest={user.isGuest} onSaved={refresh} />}
         {page === 'admin' && user.isAdmin && <AdminView onChange={refresh} />}
       </main>
     </div>

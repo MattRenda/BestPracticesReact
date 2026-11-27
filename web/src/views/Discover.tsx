@@ -3,8 +3,9 @@ import { api, ApiError, salaryRange, WORK_LABEL } from '../api'
 import type { ApplyField, RoleCard } from '../types'
 import { Deck } from '../components/Deck'
 import { ApplySetup } from '../components/ApplySetup'
+import { GuestApply } from '../components/GuestApply'
 import { Chips, ReportButton, Toast } from '../components/ui'
-import { ago, useToast } from '../lib'
+import { ago, linkSentTo, useToast } from '../lib'
 
 function paragraphs(text: string, max = 2400) {
   return text
@@ -19,6 +20,7 @@ export function Discover({ onChange }: { onChange: () => void }) {
   const [deck, setDeck] = useState<RoleCard[] | null>(null)
   const [needsProfile, setNeedsProfile] = useState(false)
   const [setup, setSetup] = useState<{ roleId: number; startupName: string; applyUrl: string; missing: ApplyField[]; consented: boolean } | null>(null)
+  const [guestFor, setGuestFor] = useState<string | null>(null)
   const [toast, setToast] = useToast()
 
   const load = useCallback(() => {
@@ -30,7 +32,11 @@ export function Discover({ onChange }: { onChange: () => void }) {
     async (card: RoleCard, liked: boolean) => {
       try {
         const r = await api.swipeRole(card.id, liked)
-        if (liked && r.application) setToast(`Applying to ${card.startup.name} for you`)
+        if (liked && r.needsAccount) {
+          const sentTo = linkSentTo()
+          if (sentTo) setToast(`Saved. It goes out when you tap the link we sent to ${sentTo}`)
+          else setGuestFor(card.startup.name)
+        } else if (liked && r.application) setToast(`Applying to ${card.startup.name} for you`)
         else if (liked && r.applySetup)
           setSetup({ roleId: card.id, startupName: card.startup.name, applyUrl: r.apply_url, missing: r.applySetup.missing, consented: r.applySetup.consented })
         onChange()
@@ -89,6 +95,7 @@ export function Discover({ onChange }: { onChange: () => void }) {
           </>
         }
       />
+      <GuestApply company={guestFor} onClose={() => setGuestFor(null)} />
       <ApplySetup
         target={setup}
         onClose={() => setSetup(null)}

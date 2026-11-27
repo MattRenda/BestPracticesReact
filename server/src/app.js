@@ -77,7 +77,7 @@ export function createApp(
   });
   app.locals.applier = applier;
 
-  const auth = createAuth(db, { mailer, publicUrl, adminEmails, production, log, ipLimit, googleClientId, fetchImpl });
+  const auth = createAuth(db, { mailer, publicUrl, adminEmails, production, log, ipLimit, googleClientId, fetchImpl, claimGuest });
   const { requireUser, requireRole, requireAdmin } = auth;
 
   // Resume uploads are the only big request bodies (base64 PDF up to 4 MB).
@@ -115,7 +115,7 @@ export function createApp(
     const u = req.user;
     const profile = getProfile(u.id);
     const out = {
-      user: u,
+      user: { ...u, isGuest: !!u.isGuest },
       profile,
       profileComplete: profileComplete(profile),
       counts: { needsYou: db.prepare("SELECT COUNT(*) n FROM applications WHERE dev_id = ? AND state = 'needs_you'").get(u.id).n },
@@ -123,6 +123,69 @@ export function createApp(
     if (u.isAdmin) out.counts.openReports = db.prepare('SELECT COUNT(*) n FROM reports WHERE resolved = 0').get().n;
     res.json(out);
   });
+
+  // ---------- guests ----------
+  /**
+   * A guest (someone who started without signing up) just signed in as `userId`. Moves the guest's
+   * profile and swipes over unless the account already has a finished profile, then sends the
+   * applications the guest swiped right on if the developer agreed to "Apply for me".
+   * Returns the startups HireMe started applying to.
+   */
+  function claimGuest(guestId, userId) {
+    const liked = db.prepare('SELECT role_id FROM dev_swipes WHERE dev_id = ? AND liked = 1').all(guestId).map((r) => r.role_id);
+    if (guestId !== userId) {
+      const gp = db.prepare('SELECT * FROM dev_profiles WHERE user_id = ?').get(guestId);
+      const tp = db.prepare('SELECT * FROM dev_profiles WHERE user_id = ?').get(userId);
+      if (gp && !profileComplete(tp)) {
+        if (tp?.resume_file && !gp.resume_file) db.prepare('UPDATE dev_profiles SET resume_file = ?, resume_name = ? WHERE user_id = ?').run(tp.resume_file, tp.resume_name, guestId);
+        else if (tp?.resume_file) applier.removeFilesFor(userId, tp.resume_file);
+        db.prepare('DELETE FROM dev_profiles WHERE user_id = ?').run(userId);
+        db.prepare('UPDATE dev_profiles SET user_id = ? WHERE user_id = ?').run(userId, guestId);
+      } else if (gp) {
+        // Keep the account's own profile; take the guest's resume and apply settings if it has none.
+        if (gp.resume_file && !tp.resume_file) db.prepare('UPDATE dev_profiles SET resume_file = ?, resume_name = ? WHERE user_id = ?').run(gp.resume_file, gp.resume_name, userId);
+        else if (gp.resume_file) applier.removeFilesFor(guestId, gp.resume_file);
+        db.prepare(
+          `UPDATE dev_profiles SET auto_apply = MAX(auto_apply, ?), phone = COALESCE(NULLIF(phone, ''), ?),
+             work_authorized = COALESCE(NULLIF(work_authorized, ''), ?), needs_sponsorship = COALESCE(NULLIF(needs_sponsorship, ''), ?) WHERE user_id = ?`,
+        ).run(gp.auto_apply, gp.phone, gp.work_authorized, gp.needs_sponsorship, userId);
+      }
+      db.prepare('UPDATE OR IGNORE dev_swipes SET dev_id = ? WHERE dev_id = ?').run(userId, guestId);
+      db.prepare('UPDATE OR IGNORE reports SET reporter_id = ? WHERE reporter_id = ?').run(userId, guestId);
+      db.prepare('DELETE FROM users WHERE id = ? AND is_guest = 1').run(guestId);
+    }
+    return { sent: sendLiked(userId, liked) };
+  }
+
+  /** Queues applications for right swipes that haven't been sent, if the developer is ready and agreed. */
+  function sendLiked(userId, roleIds) {
+    const p = applier.profileFor(userId);
+    if (!roleIds.length || !p?.auto_apply || applyReadiness(p).length) return [];
+    const sent = [];
+    for (const id of roleIds) {
+      const role = db
+        .prepare(`SELECT r.id, s.name FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.id = @id AND ${LIVE}`)
+        .get({ id, max: MAX_HEADCOUNT });
+      const already = db.prepare("SELECT 1 FROM applications WHERE dev_id = ? AND role_id = ? AND state != 'canceled'").get(userId, id);
+      if (role && !already) {
+        applier.enqueue(userId, id);
+        sent.push(role.name);
+      }
+    }
+    return sent;
+  }
+
+  /** Guests who never added an email: dropped after 30 days without a visit. */
+  app.locals.cleanupGuests = () => {
+    const old = db
+      .prepare("SELECT u.id, p.resume_file FROM users u LEFT JOIN dev_profiles p ON p.user_id = u.id WHERE u.is_guest = 1 AND COALESCE(u.last_seen_at, u.created_at) < datetime('now', '-30 days')")
+      .all();
+    for (const g of old) {
+      applier.removeFilesFor(g.id, g.resume_file);
+      db.prepare('DELETE FROM users WHERE id = ?').run(g.id);
+    }
+    return old.length;
+  };
 
   app.delete('/api/me', requireUser, (req, res) => {
     applier.removeFilesFor(req.user.id, db.prepare('SELECT resume_file FROM dev_profiles WHERE user_id = ?').get(req.user.id)?.resume_file);
@@ -271,8 +334,9 @@ export function createApp(
       `INSERT INTO dev_swipes (dev_id, role_id, liked) VALUES (?, ?, ?)
        ON CONFLICT (dev_id, role_id) DO UPDATE SET liked = excluded.liked, created_at = datetime('now')`,
     ).run(req.user.id, roleId, liked);
-    const out = { apply_url: role.apply_url, application: null, applySetup: null };
-    if (liked) {
+    const out = { apply_url: role.apply_url, application: null, applySetup: null, needsAccount: false };
+    if (liked && req.user.isGuest) out.needsAccount = true; // sent once they add an email (claimGuest)
+    else if (liked) {
       const p = applier.profileFor(req.user.id);
       const missing = applyReadiness(p);
       if (p?.auto_apply && !missing.length) out.application = publicApplication(applier.enqueue(req.user.id, roleId));
@@ -313,6 +377,7 @@ export function createApp(
   };
 
   app.post('/api/applications', requireRole('dev'), (req, res) => {
+    if (req.user.isGuest) return res.status(403).json({ error: 'Add your email first, so companies can reply to you', needsAccount: true });
     const roleId = int(req.body?.roleId);
     const role = db.prepare(`SELECT r.id FROM roles r JOIN startups s ON s.id = r.startup_id WHERE r.id = @id AND ${LIVE}`).get({ id: roleId, max: MAX_HEADCOUNT });
     if (!role) return res.status(404).json({ error: 'That role isn’t open anymore' });
@@ -435,7 +500,8 @@ export function createApp(
     // Hidden after reports ('pending') or removed by an admin ('rejected').
     const hidden = db.prepare("SELECT id, name, domain, website, status, flags, headcount FROM startups WHERE status IN ('pending', 'rejected') ORDER BY status, name LIMIT 300").all();
     const stats = {
-      devs: db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'dev'").get().n,
+      devs: db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'dev' AND is_guest = 0").get().n,
+      guests: db.prepare('SELECT COUNT(*) n FROM users WHERE is_guest = 1').get().n,
       openRoles: db.prepare(`SELECT COUNT(*) n FROM roles r JOIN startups s ON s.id = r.startup_id WHERE ${LIVE}`).get({ max: MAX_HEADCOUNT }).n,
       listed: db.prepare("SELECT COUNT(*) n FROM startups WHERE status IN ('listed', 'approved')").get().n,
       submitted: db.prepare("SELECT COUNT(*) n FROM applications WHERE state = 'submitted'").get().n,

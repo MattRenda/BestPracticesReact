@@ -32,9 +32,10 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   me: () => call<Me>('GET', '/me'),
   config: () => call<{ googleClientId: string | null }>('GET', '/config'),
-  googleSignIn: (credential: string) => call<{ ok: boolean }>('POST', '/auth/google', { credential }),
+  googleSignIn: (credential: string) => call<{ ok: boolean; sent: string[] }>('POST', '/auth/google', { credential }),
+  startGuest: () => call<{ ok: boolean }>('POST', '/auth/guest'),
   startSignIn: (email: string) => call<{ sent: boolean; devLink?: string }>('POST', '/auth/start', { email }),
-  verify: (token: string) => call<{ ok: boolean }>('POST', '/auth/verify', { token }),
+  verify: (token: string) => call<{ ok: boolean; sent: string[] }>('POST', '/auth/verify', { token }),
   logout: () => call<void>('POST', '/auth/logout'),
   deleteAccount: () => call<void>('DELETE', '/me'),
 

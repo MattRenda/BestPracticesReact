@@ -1,8 +1,25 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { GoogleButton } from '../components/GoogleButton'
+import { forgetLinkSent } from '../lib'
 
-export function Landing() {
+export function Landing({ onStart }: { onStart: () => void }) {
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState('')
+
+  // No sign-up form: a guest account starts quietly; an email is asked for when they want to apply.
+  async function start() {
+    setStarting(true)
+    setStartError('')
+    try {
+      await api.startGuest()
+      location.hash = '#/profile'
+      onStart()
+    } catch (e) {
+      setStartError((e as Error).message)
+      setStarting(false)
+    }
+  }
   const [email, setEmail] = useState('')
   const [state, setState] = useState<{ kind: 'idle' | 'sending' | 'sent' | 'error'; msg?: string; devLink?: string }>({ kind: 'idle' })
 
@@ -37,6 +54,13 @@ export function Landing() {
           <p className="lede">
             Engineering jobs at small startups, one card at a time. Swipe right and HireMe fills out the application from your profile and sends it. Free.
           </p>
+          <div className="hero-cta">
+            <button type="button" className="btn primary big" onClick={start} disabled={starting}>
+              {starting ? 'One sec…' : 'Find a startup job →'}
+            </button>
+            <span className="muted">A few quick taps. No forms.</span>
+            {startError && <p className="error">{startError}</p>}
+          </div>
           <ul className="promises">
             <li>
               <strong>Startups only.</strong> Every company has 50 people or fewer. No big companies, ever.
@@ -71,7 +95,7 @@ export function Landing() {
             </div>
           ) : (
             <>
-              <h2 className="signin-title">Start swiping</h2>
+              <h2 className="signin-title">Already use HireMe?</h2>
               <label className="field">
                 <span>Email</span>
                 <input
@@ -92,7 +116,7 @@ export function Landing() {
                 {state.kind === 'sending' ? 'Sending…' : 'Email me a sign-in link'}
               </button>
               <GoogleButton onError={(msg) => setState({ kind: 'error', msg })} />
-              <p className="fine">No passwords. Free.</p>
+              <p className="fine">No passwords. New here? Tap “Find a startup job”.</p>
             </>
           )}
         </form>
@@ -108,8 +132,10 @@ export function SignIn({ token, onDone }: { token: string; onDone: () => void })
     if (ran.current) return
     ran.current = true
     api.verify(token).then(
-      async () => {
-        history.replaceState(null, '', '/#/discover')
+      async (r) => {
+        forgetLinkSent()
+        // Applications that went out because of this sign-in are waiting in Applications.
+        history.replaceState(null, '', r.sent?.length ? '/#/applications' : '/#/discover')
         await onDone()
         window.dispatchEvent(new HashChangeEvent('hashchange'))
       },

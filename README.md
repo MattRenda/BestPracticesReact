@@ -5,7 +5,8 @@ Sprout-style job applying, for startups only. Developers swipe through engineeri
 - **Discover:** one role per card, ranked by shared skills, work style and salary floor.
 - **Swipe right:** HireMe applies (the first time it asks for a few details and consent). **Swipe left:** skip. Undo works until HireMe starts the application.
 - **Applications:** every application, its status, what was sent and a screenshot of the form. Questions HireMe can't answer truthfully show up as "Needs you".
-- **Profile:** start from a resume upload (HireMe fills in the profile from it) or fill it out by hand.
+- **Getting started:** no sign-up form. "Find a startup job" starts a guest session and asks a few one-tap questions (what you build, skills, years, how you like to work, US work authorization and sponsorship, LinkedIn/GitHub/portfolio, name), or reads a resume and asks only what's left. Then you're swiping.
+- **Email only when it matters:** a guest's first right swipe asks where the startup should reach them (email, phone, resume if needed). Tapping the emailed link, or using Google, turns the guest into an account and sends every right swipe so far. Signing in to an existing account keeps that account's profile and brings the swipes along. Guests that never add an email are deleted after 30 days.
 
 ## How the startup-only rule is enforced
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
+import { forgetLinkSent } from '../lib'
 
 // Minimal types for Google Identity Services (https://accounts.google.com/gsi/client)
 type GoogleId = {
@@ -29,14 +30,14 @@ function loadGis() {
 }
 
 /** "Sign in with Google". Shows nothing until the server has a Google client ID configured. */
-export function GoogleButton({ onError }: { onError: (msg: string) => void }) {
+export function GoogleButton({ onError, before }: { onError: (msg: string) => void; before?: () => Promise<string | void> }) {
   const box = useRef<HTMLDivElement>(null)
-  const latest = useRef({ onError })
+  const latest = useRef({ onError, before })
   const [clientId, setClientId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    latest.current = { onError }
+    latest.current = { onError, before }
   })
 
   useEffect(() => {
@@ -56,8 +57,11 @@ export function GoogleButton({ onError }: { onError: (msg: string) => void }) {
           callback: async ({ credential }) => {
             setBusy(true)
             try {
-              await api.googleSignIn(credential)
-              location.hash = '#/discover'
+              const problem = await latest.current.before?.()
+              if (problem) throw new Error(problem)
+              const r = await api.googleSignIn(credential)
+              forgetLinkSent()
+              location.hash = r.sent?.length ? '#/applications' : '#/discover'
               location.reload()
             } catch (e) {
               latest.current.onError((e as Error).message)

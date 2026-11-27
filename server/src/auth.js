@@ -9,7 +9,7 @@ const COOKIE = 'hm_session';
 const SESSION_DAYS = 30;
 const LINK_MINUTES = 20;
 
-export function createAuth(db, { mailer, publicUrl, adminEmails = [], production = false, log = console, ipLimit = 12, googleClientId = '', fetchImpl = fetch }) {
+export function createAuth(db, { mailer, publicUrl, adminEmails = [], production = false, log = console, ipLimit = 12, googleClientId = '', fetchImpl = fetch, claimGuest = () => ({ sent: [] }) }) {
   const verifyGoogle = createGoogleVerifier({ clientId: googleClientId, fetchImpl });
   const admins = new Set(adminEmails.map((e) => e.trim().toLowerCase()).filter(Boolean));
   const hits = new Map();
@@ -45,13 +45,27 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
     );
   }
 
-  /** Creates the account if needed (every account is a developer account) and starts a session. */
-  function signIn(req, res, email) {
-    db.prepare("INSERT OR IGNORE INTO users (email, role) VALUES (?, 'dev')").run(email);
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  /**
+   * Creates the account if needed (every account is a developer account) and starts a session.
+   * If a guest account is signing in, its profile and swipes become this account's: a new email
+   * turns the guest into a real account; an existing one absorbs it (see claimGuest in app.js).
+   */
+  function signIn(req, res, email, guestId) {
+    const guest = guestId ? db.prepare('SELECT * FROM users WHERE id = ? AND is_guest = 1').get(guestId) : null;
+    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (guest && !user) {
+      db.prepare('UPDATE users SET email = ?, is_guest = 0 WHERE id = ?').run(email, guest.id);
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(guest.id);
+    } else if (!user) {
+      db.prepare("INSERT INTO users (email, role) VALUES (?, 'dev')").run(email);
+      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    }
+    const claimed = guest ? claimGuest(guest.id, user.id) : { sent: [] };
     setSession(req, res, user.id);
-    return user;
+    return { user, ...claimed };
   }
+
+  const guestOf = (req) => (req.user?.isGuest ? req.user.id : null);
 
   const isAdmin = (user) => !!user && admins.has(user.email.toLowerCase());
 
@@ -76,7 +90,7 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
         .prepare("SELECT u.*, s.hash FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.hash = ? AND s.expires_at > datetime('now')")
         .get(sha(token));
       if (row) {
-        req.user = { id: row.id, email: row.email, role: row.role, isAdmin: isAdmin(row) };
+        req.user = { id: row.id, email: row.is_guest ? '' : row.email, role: row.role, isAdmin: !row.is_guest && isAdmin(row), isGuest: !!row.is_guest };
         if (!row.last_seen_at || Date.now() - new Date(`${row.last_seen_at}Z`).getTime() > 60_000)
           db.prepare("UPDATE users SET last_seen_at = datetime('now') WHERE id = ?").run(row.id);
       }
@@ -93,6 +107,16 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
   const requireAdmin = (req, res, next) => (req.user?.isAdmin ? next() : res.status(403).json({ error: 'Admins only' }));
 
   function routes(app) {
+    // "Get started" without signing up: a guest account with a session, so answers and swipes are kept.
+    app.post('/api/auth/guest', (req, res) => {
+      if (req.user) return res.json({ ok: true, existing: true });
+      if (limited(`guest:${req.ip}`, 30, 3_600_000)) return res.status(429).json({ error: 'Too many new visitors from your network. Try again later.' });
+      const email = `guest-${randomBytes(9).toString('hex')}@guest.hireme.invalid`;
+      const id = Number(db.prepare("INSERT INTO users (email, role, is_guest) VALUES (?, 'dev', 1)").run(email).lastInsertRowid);
+      setSession(req, res, id);
+      res.status(201).json({ ok: true });
+    });
+
     app.post('/api/auth/start', async (req, res) => {
       const email = String(req.body?.email || '').trim().toLowerCase();
       if (!isEmail(email)) return res.status(400).json({ error: 'Enter a valid email address' });
@@ -102,7 +126,11 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
 
       const token = randomBytes(32).toString('base64url');
       db.prepare("DELETE FROM login_tokens WHERE expires_at < datetime('now')").run();
-      db.prepare(`INSERT INTO login_tokens (hash, email, intent, expires_at) VALUES (?, ?, '', datetime('now', '+${LINK_MINUTES} minutes'))`).run(sha(token), email);
+      db.prepare(`INSERT INTO login_tokens (hash, email, intent, guest_id, expires_at) VALUES (?, ?, '', ?, datetime('now', '+${LINK_MINUTES} minutes'))`).run(
+        sha(token),
+        email,
+        guestOf(req),
+      );
       const link = `${baseUrl(req)}/#/signin/${token}`;
       try {
         await mailer.send({
@@ -122,8 +150,9 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
       const row = db.prepare("SELECT * FROM login_tokens WHERE hash = ? AND expires_at > datetime('now')").get(sha(token));
       if (!row) return res.status(400).json({ error: 'That sign-in link has expired or was already used. Request a new one.' });
       db.prepare('DELETE FROM login_tokens WHERE hash = ?').run(row.hash);
-      signIn(req, res, row.email);
-      res.json({ ok: true });
+      // The guest is remembered on the link itself, so it works even if opened in another browser.
+      const r = signIn(req, res, row.email, row.guest_id || guestOf(req));
+      res.json({ ok: true, sent: r.sent });
     });
 
     // "Sign in with Google": the browser sends Google's signed ID token; Google has verified the email.
@@ -135,8 +164,8 @@ export function createAuth(db, { mailer, publicUrl, adminEmails = [], production
       } catch (e) {
         return res.status(400).json({ error: e.message });
       }
-      signIn(req, res, g.email);
-      res.json({ ok: true });
+      const r = signIn(req, res, g.email, guestOf(req));
+      res.json({ ok: true, sent: r.sent });
     });
 
     app.post('/api/auth/logout', (req, res) => {

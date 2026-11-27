@@ -164,6 +164,54 @@ test('reports: three recruiter reports hide a company until an admin looks', asy
   assert.equal((await admin.req('GET', '/admin/queue')).body.reports.filter((x) => x.target_id === s.sid).length, 0);
 });
 
+test('guests: start without signing up, swipe, then add an email and the applications go out', async () => {
+  const role = listedRole({ name: 'Guest Rocket' });
+  const g = client();
+  assert.equal((await g.req('POST', '/auth/guest')).status, 201);
+  let me = (await g.req('GET', '/me')).body;
+  assert.equal(me.user.isGuest, true);
+  assert.equal(me.user.email, '', 'the placeholder email never shows');
+  assert.equal(me.profileComplete, false);
+
+  // Answers from the get-to-know-you steps, plus what forms need
+  await g.req('PUT', '/profile', { ...READY, links: { linkedin: 'linkedin.com/in/dana' }, auto_apply: true });
+  const swipe = (await g.req('POST', `/deck/${role.rid}`, { liked: true })).body;
+  assert.equal(swipe.needsAccount, true);
+  assert.equal(swipe.application, null, 'nothing is sent without a real email');
+  assert.equal((await g.req('POST', '/applications', { roleId: role.rid, consent: true })).status, 403);
+
+  // The sign-in link carries the guest, even if opened in another browser
+  const start = await g.req('POST', '/auth/start', { email: 'Newbie@Example.com' });
+  const token = start.body.devLink.split('/signin/')[1];
+  const other = client();
+  const v = await other.req('POST', '/auth/verify', { token });
+  assert.deepEqual(v.body.sent, ['Guest Rocket']);
+  me = (await other.req('GET', '/me')).body;
+  assert.equal(me.user.email, 'newbie@example.com');
+  assert.equal(me.user.isGuest, false);
+  assert.equal(me.profile.name, 'Dana Dev');
+  assert.equal(me.profile.links.linkedin, 'https://linkedin.com/in/dana');
+  assert.equal((await other.req('GET', '/applications')).body[0].startup_name, 'Guest Rocket');
+});
+
+test('guests who sign in to an existing account keep that account’s profile and bring their swipes', async () => {
+  const role = listedRole({ name: 'Merge Labs' });
+  const old = client();
+  await old.signIn('returning@example.com');
+  await old.req('PUT', '/profile', { ...READY, name: 'Real Name', auto_apply: true });
+
+  const g = client();
+  await g.req('POST', '/auth/guest');
+  await g.req('PUT', '/profile', { ...DEV_PROFILE, name: 'Guest Name' });
+  await g.req('POST', `/deck/${role.rid}`, { liked: true });
+  const start = await g.req('POST', '/auth/start', { email: 'returning@example.com' });
+  const v = await g.req('POST', '/auth/verify', { token: start.body.devLink.split('/signin/')[1] });
+  assert.deepEqual(v.body.sent, ['Merge Labs'], 'the account had already agreed to Apply for me');
+  const me = (await g.req('GET', '/me')).body;
+  assert.equal(me.profile.name, 'Real Name');
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM users WHERE is_guest = 1 AND id NOT IN (SELECT user_id FROM sessions)").get().n, 0, 'the guest account is gone');
+});
+
 test('accounts can be deleted', async () => {
   const dev = client();
   await dev.signIn('leaver@example.com');

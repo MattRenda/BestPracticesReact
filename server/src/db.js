@@ -180,6 +180,10 @@ export function openDb(file = DB_PATH) {
     ['apply_url', 'TEXT'],
     ['posted_at', 'TEXT'],
   ]);
+  // Guests: people who started without signing up. A placeholder email until they add a real one.
+  addColumns('users', [['is_guest', 'INTEGER NOT NULL DEFAULT 0']]);
+  // The guest account that asked for a sign-in link, so its answers and swipes carry over.
+  addColumns('login_tokens', [['guest_id', 'INTEGER']]);
   // What HireMe needs to apply on a developer's behalf.
   addColumns('dev_profiles', [
     ['phone', "TEXT NOT NULL DEFAULT ''"],

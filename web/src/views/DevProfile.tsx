@@ -3,6 +3,7 @@ import { api, uploadResumeFile } from '../api'
 import type { DevProfile, WorkPref } from '../types'
 import { Toast } from '../components/ui'
 import { CONSENT_TEXT } from '../components/ApplySetup'
+import { SaveAccount } from '../components/SaveAccount'
 import { useToast } from '../lib'
 
 const PREFS: [WorkPref, string][] = [
@@ -12,12 +13,11 @@ const PREFS: [WorkPref, string][] = [
   ['any', 'Open to anything'],
 ]
 
-export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; onSaved: () => void }) {
+export function DevProfileView({ isGuest, onSaved }: { isGuest: boolean; onSaved: () => void }) {
   const [p, setP] = useState<DevProfile | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useToast()
-  const [started, setStarted] = useState(false)
   const [reading, setReading] = useState(false)
   const [filled, setFilled] = useState<{ from: string; count: number; unreadable: boolean } | null>(null)
 
@@ -41,7 +41,6 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
       setP({ ...next, has_resume: true, resume_name: r.resume_name })
       if (count) setDirty(true)
       setFilled({ from: r.resume_name, count, unreadable: !!r.unreadable })
-      setStarted(true)
       window.scrollTo({ top: 0 })
     } catch (err) {
       setToast((err as Error).message)
@@ -74,8 +73,7 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
       setP(saved)
       setDirty(false)
       onSaved()
-      if (onboarding && saved.complete) location.hash = '#/discover'
-      else setToast(saved.complete ? 'Profile saved' : 'Saved. Add your name, headline and skills to start swiping.')
+      setToast(saved.complete ? 'Profile saved' : 'Saved. Add your name, headline and skills to start swiping.')
     } catch (err) {
       setToast((err as Error).message)
     } finally {
@@ -84,30 +82,6 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
   }
 
   if (!p) return <p className="muted">Loading…</p>
-
-  // New developers start by choosing: upload a resume to fill this in, or type it out.
-  if (onboarding && !started && !p.name && !p.headline && !p.skills)
-    return (
-      <section className="view narrow">
-        <header className="view-head">
-          <h1>Set up your profile</h1>
-          <p className="lede">HireMe fills out every application from this. Start from your resume, or fill it out yourself.</p>
-        </header>
-        <div className="start-choices">
-          <label className={`choice upload-choice${reading ? ' busy' : ''}`}>
-            <strong>{reading ? 'Reading your resume…' : 'Upload your resume'}</strong>
-            <span>PDF. HireMe fills in your profile from it for you to check, and sends it when it applies for you.</span>
-            <input type="file" accept="application/pdf,.pdf" onChange={fillFromResume} disabled={reading} aria-label="Upload your resume (PDF)" />
-          </label>
-          <button type="button" className="choice" onClick={() => setStarted(true)} disabled={reading}>
-            <strong>Fill it out yourself</strong>
-            <span>A few minutes. You can add a resume later.</span>
-          </button>
-        </div>
-        <Toast msg={toast} />
-      </section>
-    )
-
   const text = (k: 'name' | 'headline' | 'location', label: string, placeholder = '', required = false) => (
     <label className="field">
       <span>
@@ -121,12 +95,8 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
   return (
     <section className="view narrow">
       <header className="view-head">
-        <h1>{onboarding ? 'Set up your profile' : 'Your profile'}</h1>
-        <p className="lede">
-          {onboarding
-            ? 'HireMe fills out every application from this, so the more you add, the better your applications.'
-            : 'HireMe fills out every application from this. It also decides which roles show up first.'}
-        </p>
+        <h1>Your profile</h1>
+        <p className="lede">HireMe fills out every application from this. It also decides which roles show up first.</p>
         <div className="head-actions">
           <label className="btn ghost small import">
             {reading ? 'Reading…' : 'Fill in from resume'}
@@ -138,6 +108,15 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
           </label>
         </div>
       </header>
+
+      {isGuest && (
+        <section className="guest-save">
+          <SaveAccount
+            title="Keep your profile"
+            sub="Add your email so HireMe can send applications and you can come back from any device. No password."
+          />
+        </section>
+      )}
 
       {filled && (
         <p className="banner" role="status">
@@ -227,7 +206,7 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
           </label>
         </fieldset>
 
-        {!onboarding && (
+        {!isGuest && (
           <fieldset className="group">
             <legend>Account</legend>
             <DeleteAccount />
@@ -236,8 +215,8 @@ export function DevProfileView({ onboarding, onSaved }: { onboarding: boolean; o
 
         <div className="sticky-save">
           <span className="status-msg">{dirty ? 'Unsaved changes' : ''}</span>
-          <button className="btn primary" disabled={saving || (!dirty && !onboarding)}>
-            {onboarding ? 'Save and start swiping' : 'Save profile'}
+          <button className="btn primary" disabled={saving || !dirty}>
+            Save profile
           </button>
         </div>
       </form>

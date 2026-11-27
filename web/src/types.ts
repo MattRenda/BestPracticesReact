@@ -7,6 +7,8 @@ export interface User {
   email: string
   role: Role
   isAdmin: boolean
+  /** Started without signing up; email is '' until they add one. */
+  isGuest: boolean
 }
 
 export interface Links {
@@ -105,6 +107,8 @@ export interface RoleCard {
 
 export interface SwipeResult {
   apply_url: string
+  /** A guest swiped right: ask for an email so HireMe can send it. */
+  needsAccount: boolean
   application: Application | null
   applySetup: { missing: ApplyField[]; consented: boolean } | null
 }

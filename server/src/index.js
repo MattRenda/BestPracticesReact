@@ -11,6 +11,7 @@ const app = createApp(db);
 setInterval(() => {
   db.prepare("DELETE FROM login_tokens WHERE expires_at < datetime('now')").run();
   db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
+  app.locals.cleanupGuests();
 }, 3_600_000).unref();
 
 // Pull roles from startups' job boards: shortly after boot, then twice a day.
@@ -28,7 +29,7 @@ app.listen(PORT, HOST, () => {
         ? 'SMTP_URL not set — nobody can sign in until it is.'
         : 'SMTP_URL not set — sign-in links are shown on screen and printed here instead of emailed.',
     );
-  if (!process.env.ADMIN_EMAILS) console.log('ADMIN_EMAILS not set — nobody can approve startups yet.');
+  if (!process.env.ADMIN_EMAILS) console.log('ADMIN_EMAILS not set — nobody has the Admin tab.');
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
