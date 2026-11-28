@@ -13,7 +13,56 @@ const clean = (s) => String(s || '').trim();
 const norm = (s) => clean(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 const realEmail = (e) => /@/.test(e || '') && !/\.invalid$/i.test(e) && !/noreply/i.test(e);
 
-export function createFindMe({ fetchImpl = fetch, token = process.env.GITHUB_TOKEN, log = console, pageFetch = (u) => fetchPublicPage(u, { fetchImpl }) } = {}) {
+export function createFindMe({
+  fetchImpl = fetch,
+  token = process.env.GITHUB_TOKEN,
+  braveKey = process.env.BRAVE_SEARCH_KEY,
+  log = console,
+  pageFetch = (u) => fetchPublicPage(u, { fetchImpl }),
+} = {}) {
+  /**
+   * LinkedIn profiles that match the developer's name, from a web search engine's index (Brave Search), not
+   * from LinkedIn itself: LinkedIn has no search API and doesn't allow scraping. Public search results
+   * show a profile's link, name, headline and often location; the developer picks theirs.
+   */
+  async function searchLinkedin({ name, location = '' }) {
+    if (!braveKey) return null;
+    const fullName = clean(name);
+    if (fullName.split(/\s+/).length < 2) return [];
+    const city = clean(location.split(',')[0]);
+    const run = async (q) => {
+      const res = await fetchImpl(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=10&safesearch=strict`, {
+        headers: { accept: 'application/json', 'x-subscription-token': braveKey },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.status === 429) throw Object.assign(new Error('Search is busy right now. Try again in a minute.'), { busy: true });
+      if (!res.ok) return [];
+      return (await res.json())?.web?.results || [];
+    };
+    let results = await run(`site:linkedin.com/in "${fullName}"${city ? ` ${city}` : ''}`);
+    if (city && results.length < 2) results = [...results, ...(await run(`site:linkedin.com/in "${fullName}"`))];
+    const strip = (s) => String(s || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;|&#x27;/g, "'").replace(/&quot;/g, '"').trim();
+    const seen = new Set();
+    const out = [];
+    for (const r of results) {
+      const slug = String(r.url || '').match(/linkedin\.com\/in\/([\w%-]{3,100})/i)?.[1];
+      if (!slug || seen.has(slug.toLowerCase())) continue;
+      seen.add(slug.toLowerCase());
+      const title = strip(r.title).replace(/\s*[|·-]\s*LinkedIn\s*$/i, '');
+      const [who, ...rest] = title.split(/\s+[-–—|]\s+/);
+      const snippet = strip([r.description, ...(r.extra_snippets || [])].join(' ')).slice(0, 300);
+      const why = [];
+      let score = 0;
+      if (norm(who) === norm(fullName)) (score += 40), why.push('Same name');
+      else if (norm(who).includes(norm(fullName.split(/\s+/).at(-1)))) (score += 15), why.push('Similar name');
+      if (city && norm(`${title} ${snippet}`).includes(norm(city))) (score += 25), why.push('Same city');
+      if (!score) continue;
+      const place = snippet.match(/Location:\s*([^·|.]+?)(?:\s*[·|.]|$)/i)?.[1] || '';
+      out.push({ url: `https://www.linkedin.com/in/${slug}`, name: who || '', headline: rest.join(' · ').slice(0, 140), location: place.trim(), snippet, why, score });
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, 5).map(({ score, ...c }) => ({ ...c, strong: score >= 65 }));
+  }
+
   /** The LinkedIn link on the developer's own website, if it has one. */
   async function linkedinFromSite(site) {
     if (!site || /linkedin\.com|github\.com/i.test(site)) return '';
@@ -117,7 +166,7 @@ export function createFindMe({ fetchImpl = fetch, token = process.env.GITHUB_TOK
     log.info?.(`[findme] ${result.length} GitHub candidates`);
     return result;
   }
-  return { find, linkedinFromSite };
+  return { find, linkedinFromSite, searchLinkedin };
 }
 
 function rethrowBusy(e) {

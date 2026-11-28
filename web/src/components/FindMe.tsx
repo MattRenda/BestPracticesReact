@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from '../api'
-import type { FoundAccount } from '../types'
+import type { FoundAccount, FoundLinkedin } from '../types'
 import { Sheet } from './ui'
 
 type Links = { github?: string; linkedin?: string; portfolio?: string }
@@ -15,6 +15,7 @@ export function FindMe({ who, links, onPick }: { who: { name?: string; email?: s
   const [busy, setBusy] = useState(false)
   const [found, setFound] = useState<FoundAccount[] | null>(null)
   const [siteLinkedin, setSiteLinkedin] = useState<{ url: string; from: string } | null>(null)
+  const [liMatches, setLiMatches] = useState<FoundLinkedin[]>([])
   const [error, setError] = useState('')
 
   async function search() {
@@ -25,6 +26,8 @@ export function FindMe({ who, links, onPick }: { who: { name?: string; email?: s
       const r = await api.findLinks({ ...who, website: who.website || links.portfolio })
       setFound(r.candidates)
       setSiteLinkedin(r.linkedin && !r.candidates.some((c) => c.linkedin === r.linkedin?.url) ? r.linkedin : null)
+      const known = new Set([...r.candidates.map((c) => c.linkedin), r.linkedin?.url].filter(Boolean))
+      setLiMatches((r.linkedinMatches ?? []).filter((m) => !known.has(m.url)))
     } catch (e) {
       setError((e as Error).message)
     }
@@ -90,10 +93,41 @@ export function FindMe({ who, links, onPick }: { who: { name?: string; email?: s
                   That’s my LinkedIn
                 </button>
               </>
-            ) : (
+            ) : liMatches.length ? null : (
               <p className="muted small">
                 LinkedIn can’t be searched from outside. Open your profile, tap Share (or More) → Copy link, then come back and tap Paste.
               </p>
+            )}
+            {liMatches.length > 0 && (
+              <>
+                <p className="muted small">Profiles with your name in web search results. Pick yours:</p>
+                <ul className="findme-list">
+                  {liMatches.map((m) => (
+                    <li key={m.url} className={m.strong ? 'strong' : ''}>
+                      <div className="findme-info">
+                        <strong>{m.name}</strong>
+                        {m.headline && <p className="small">{m.headline}</p>}
+                        {m.location && <p className="muted small">{m.location}</p>}
+                        <p className="small findme-why">{m.why.join(' · ')}</p>
+                        <a className="small" href={m.url} target="_blank" rel="noreferrer noopener">
+                          {m.url.replace(/^https?:\/\/(www\.)?/, '')}
+                        </a>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn primary small"
+                        onClick={() => {
+                          onPick({ linkedin: m.url })
+                          setOpen(false)
+                        }}
+                      >
+                        That’s me
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="muted small findme-credit">LinkedIn results from Brave Search. Not yours? Open your profile and Paste.</p>
+              </>
             )}
             <div className="row-actions">
               <a className="btn ghost small" href="https://www.linkedin.com/in/me/" target="_blank" rel="noreferrer noopener">

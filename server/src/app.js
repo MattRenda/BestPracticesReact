@@ -297,8 +297,16 @@ export function createApp(
     if (!name.trim() && !emails.some((e) => /@/.test(e) && !/\.invalid$/.test(e))) return res.status(400).json({ error: 'Add your name first, so HireMe knows who to look for' });
     try {
       const site = str(req.body?.website, 300) || p.links?.portfolio || '';
-      const [candidates, fromSite] = await Promise.all([finder.find({ name, emails, location }), finder.linkedinFromSite?.(site).catch(() => '') ?? '']);
-      res.json({ candidates, linkedin: fromSite ? { url: fromSite, from: site.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/.*$/, '') } : null });
+      const [candidates, fromSite, linkedinMatches] = await Promise.all([
+        finder.find({ name, emails, location }),
+        finder.linkedinFromSite?.(site).catch(() => '') ?? '',
+        finder.searchLinkedin?.({ name, location }).catch((e) => (log.warn?.(`[findme] LinkedIn search: ${e.message}`), [])) ?? null,
+      ]);
+      res.json({
+        candidates,
+        linkedin: fromSite ? { url: fromSite, from: site.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/.*$/, '') } : null,
+        linkedinMatches, // null when no search key is set up
+      });
     } catch (e) {
       log.warn?.(`[findme] ${e.message}`);
       res.status(e.busy ? 503 : 502).json({ error: e.busy ? e.message : 'Couldn’t reach GitHub. Try again in a minute.' });

@@ -47,6 +47,7 @@ export function Privacy() {
 
       <h2>How it’s used and who sees it</h2>
       <ul>
+        <li>When you tap “Find me”, HireMe looks up your name, email and city on GitHub and in Brave Search’s web results, and reads the website you list, to suggest your GitHub and LinkedIn. Nothing is saved unless you confirm it.</li>
         <li>Your profile isn’t public and isn’t shown to companies on HireMe. Companies only receive what HireMe sends in an application you asked for.</li>
         <li>
           <strong>Applying for you:</strong> when you swipe right on a role, we send your name, email, phone, links, location, work

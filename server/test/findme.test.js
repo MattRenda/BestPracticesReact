@@ -75,3 +75,35 @@ test('LinkedIn from the developer’s own website; private addresses are never f
   assert.equal(await f.linkedinFromSite('https://dana.dev'), 'https://www.linkedin.com/in/dana-from-site');
   assert.equal(await f.linkedinFromSite('https://github.com/dana'), '');
 });
+
+test('LinkedIn profiles from web search results (not LinkedIn): name and city decide, the developer picks', async () => {
+  const queries = [];
+  const fetchImpl = async (url, opts) => {
+    queries.push(decodeURIComponent(new URL(url).searchParams.get('q')));
+    assert.equal(opts.headers['x-subscription-token'], 'k');
+    return json({
+      web: {
+        results: [
+          { title: 'Dana Smith - Senior Software Engineer - Lumen Labs | LinkedIn', url: 'https://www.linkedin.com/in/dana-smith-1a2b', description: '<strong>Dana Smith</strong>. Senior Software Engineer. Location: Sacramento · 500+ connections' },
+          { title: 'Dana Smith - Nurse - Mercy | LinkedIn', url: 'https://www.linkedin.com/in/danasmithrn', description: 'Location: Boston' },
+          { title: 'Dana Smith - Senior Software Engineer | LinkedIn', url: 'https://linkedin.com/in/dana-smith-1a2b?trk=x', description: 'dup' },
+          { title: 'Lumen Labs | LinkedIn', url: 'https://www.linkedin.com/company/lumen', description: 'company page' },
+          { title: 'John Doe - Engineer | LinkedIn', url: 'https://www.linkedin.com/in/jdoe', description: 'Location: Ohio' },
+        ],
+      },
+    });
+  };
+  const f = createFindMe({ fetchImpl, braveKey: 'k', log: { info() {} } });
+  const r = await f.searchLinkedin({ name: 'Dana Smith', location: 'Sacramento, CA' });
+  assert.equal(queries[0], 'site:linkedin.com/in "Dana Smith" Sacramento');
+  assert.deepEqual(
+    r.map((c) => [c.url, c.strong, c.why.join(', ')]),
+    [
+      ['https://www.linkedin.com/in/dana-smith-1a2b', true, 'Same name, Same city'],
+      ['https://www.linkedin.com/in/danasmithrn', false, 'Same name'],
+    ],
+  );
+  assert.equal(r[0].headline, 'Senior Software Engineer · Lumen Labs');
+  assert.equal(r[0].location, 'Sacramento');
+  assert.equal(await createFindMe({ fetchImpl, braveKey: '', log: { info() {} } }).searchLinkedin({ name: 'Dana Smith' }), null, 'off without a key');
+});

@@ -238,3 +238,14 @@ export interface FoundAccount {
   why: string[]
   strong: boolean
 }
+
+/** A LinkedIn profile from web search results that may be the developer's. */
+export interface FoundLinkedin {
+  url: string
+  name: string
+  headline: string
+  location: string
+  snippet: string
+  why: string[]
+  strong: boolean
+}
