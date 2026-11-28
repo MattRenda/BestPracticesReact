@@ -122,6 +122,8 @@ Any host that runs a Dockerfile with a volume mounted at `/data` works the same 
 | `BRAVE_SEARCH_KEY` | Optional. A Brave Search API key; "Find me" then suggests LinkedIn profiles from web search results for the developer's name and city ($5/month in free credits ≈ 1,000 searches) |
 | `BRAVE_MONTHLY_LIMIT` | Optional. Most Brave searches per calendar month (default 900, inside the $5 free credit); past it, Find me skips LinkedIn search |
 | `DATA_KEY` | Optional. Encrypts startups' ATS API keys; without it a random key is kept in `data.key` next to the database |
+| `OLLAMA_URL` | Optional. Your own Ollama server (e.g. `http://hireme-ollama.flycast:11434`); used to answer form questions HireMe's rules don't cover and to write cover notes. Takes priority over Claude |
+| `OLLAMA_MODEL` | Optional. Ollama model name (default `qwen2.5:3b`) |
 | `EMAIL_DAILY_CAP` | Optional. Application emails per day across all developers (default 300) |
 | `DB_PATH` | SQLite file (default `server/data/hireme.db`; `/data/hireme.db` in Docker) |
 

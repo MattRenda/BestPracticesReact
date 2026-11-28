@@ -54,3 +54,15 @@ test('everything else gets a positive, grounded answer', () => {
   assert.match(ask('Tell us about a project you are proud of', [], false), /Right now I build and maintain the DMV website/);
   assert.equal(ask('Which team are you most interested in?', ['Select...', 'Platform', 'Growth']), 'Platform');
 });
+
+test('where did you find us / who referred you: the truth (HireMe or the HN thread), never blank', async () => {
+  const { autoAnswer } = await import('../src/apply/answers.js');
+  const profile = { name: 'Dana Dev', skills: 'React' };
+  const q = (question, job = {}, options = []) => autoAnswer({ question, options, short: true, profile, defaults: {}, job });
+  assert.equal(q('Who referred you or where did you see our job ad?'), 'Found it on HireMe (a job board for startups)');
+  assert.equal(q('How did you hear about us?', { source: 'hn' }), 'Found it on Hacker News “Who is hiring?” thread');
+  assert.equal(q('Who referred you?'), 'No referral. I found the role on HireMe (a job board for startups).');
+  assert.equal(q('Were you referred by a current employee?', {}, ['Yes', 'No']), 'No');
+  assert.equal(q('How did you hear about this job?', {}, ['LinkedIn', 'Job board', 'Friend']), 'Job board');
+  assert.equal(q('Source of application', { source: 'hn' }, ['LinkedIn', 'Hacker News', 'Other']), 'Hacker News');
+});

@@ -1,10 +1,34 @@
-// Writing for applications. Uses Claude when ANTHROPIC_API_KEY is set; otherwise plain templates.
+// Writing for applications. Uses a language model when one is set up: your own Ollama (OLLAMA_URL, e.g.
+// http://hireme-ollama.internal:11434, OLLAMA_MODEL) or Claude (ANTHROPIC_API_KEY); otherwise plain templates.
 // Claude only drafts open-ended answers and cover notes. Factual questions (work authorization,
 // sponsorship, salary, start date, demographics…) are never sent here — the developer answers those.
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 
-export const aiEnabled = (env = process.env) => Boolean(env.ANTHROPIC_API_KEY);
+export const aiEnabled = (env = process.env) => Boolean(env.OLLAMA_URL || env.ANTHROPIC_API_KEY);
+
+/** A short text reply from whichever model is set up: Ollama first (it's yours and free to run), else Claude. */
+export async function callModel(env, system, prompt, maxTokens) {
+  if (!env.OLLAMA_URL) return callClaude(env, system, prompt, maxTokens);
+  const res = await fetch(`${env.OLLAMA_URL.replace(/\/$/, '')}/api/chat`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: env.OLLAMA_MODEL || 'qwen2.5:3b',
+      stream: false,
+      options: { num_predict: maxTokens, temperature: 0.3 },
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt },
+      ],
+    }),
+    signal: AbortSignal.timeout(Number(env.OLLAMA_TIMEOUT_MS) || 90_000),
+  });
+  if (!res.ok) throw new Error(`Ollama ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return String((await res.json())?.message?.content || '')
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .trim();
+}
 
 /** Questions only the developer can answer truthfully. */
 export const FACTUAL =
@@ -53,7 +77,7 @@ const jobBlock = (job) => `Company: ${job.company}\nRole: ${job.title}\n${job.de
 export async function coverNote(env, profile, email, job) {
   if (aiEnabled(env)) {
     try {
-      return await callClaude(
+      return await callModel(
         env,
         SYSTEM,
         `${profileBlock(profile, email)}\n\n${jobBlock(job)}\n\nWrite a short cover note (120-200 words) for this role: why this startup and role, two concrete things from the profile that fit the post, and a one-line close. Sign with the developer's name.`,
@@ -91,7 +115,7 @@ export async function draftAnswer(env, profile, email, job, question, short, opt
   if (!aiEnabled(env)) return '';
   try {
     const choices = options.filter((o) => o && !/^(select|choose|--|please)/i.test(o));
-    const t = await callClaude(
+    const t = await callModel(
       env,
       `${ANSWER_RULES}\n\n${SYSTEM}`,
       `${profileBlock(profile, email)}\n${profile.facts ? `\nFacts and form answers:\n${profile.facts}\n` : ''}\n${jobBlock(job)}\n\nApplication question: "${question}"\n\n${

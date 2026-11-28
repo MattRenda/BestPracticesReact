@@ -77,7 +77,7 @@ export function createAtsApi({ fetchImpl = fetch } = {}) {
             continue;
           }
           const options = (f.values || []).map((v) => v.label);
-          const a = answer(q.label, options, f.type === 'input_text');
+          const a = await answer(q.label, options, f.type === 'input_text');
           if (!a) {
             if (q.required) missing.push(q.label);
             continue;
@@ -137,7 +137,7 @@ export function createAtsApi({ fetchImpl = fetch } = {}) {
         const f = e.field || e;
         const req = !!(e.isRequired ?? !f.isNullable);
         const title = f.title || f.humanReadablePath || f.path;
-        const value = (() => {
+        const value = await (async () => {
           if (f.path === '_systemfield_name') return profile.name;
           if (f.path === '_systemfield_email' || f.type === 'Email') return profile.email;
           if (f.path === '_systemfield_resume') {
@@ -148,7 +148,7 @@ export function createAtsApi({ fetchImpl = fetch } = {}) {
           if (f.type === 'SocialLink' || /linkedin/i.test(title)) return /github/i.test(title) ? profile.links?.github || '' : /linkedin/i.test(title) ? profile.links?.linkedin || '' : profile.links?.portfolio || '';
           if (f.type === 'File') return '';
           const options = (f.selectableValues || []).map((v) => v.label);
-          const a = answer(title, options, f.type !== 'LongText');
+          const a = await answer(title, options, f.type !== 'LongText');
           if (!a) return '';
           if (f.type === 'ValueSelect') return (f.selectableValues || []).find((v) => v.label.toLowerCase() === a.toLowerCase())?.value || '';
           if (f.type === 'MultiValueSelect') {

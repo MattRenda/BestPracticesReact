@@ -9,7 +9,7 @@ import { languageOf, LANGUAGE_NAMES } from '../lang.js';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { coverNote, draftAnswer } from './ai.js';
+import { coverNote, draftAnswer, FACTUAL } from './ai.js';
 import { letterHtml, profileResume, resumeHtml } from './resume.js';
 import { autoAnswer } from './answers.js';
 
@@ -309,9 +309,7 @@ export function createApplier(
       }
       // Claude when there's a key, then HireMe's own rules: optimistic, grounded in the resume.
       const options = Array.isArray(payload.options) ? payload.options.map(String).slice(0, 60) : [];
-      const drafted =
-        (await draftAnswer(env, { ...profile, facts: factsFor(profile) }, profile.email, job, payload.question, payload.short, options)) ||
-        autoAnswer({ question: payload.question, options, short: payload.short, profile, defaults: formDefaults(profile), job });
+      const drafted = await answerFor(profile, job, payload.question, options, payload.short);
       if (drafted) answers.push({ question: payload.question, answer: drafted, source: 'drafted' });
       return { ok: true, data: { answer: drafted } };
     });
@@ -447,7 +445,7 @@ export function createApplier(
     const profile = profileFor(app.dev_id);
     if (!role || role.status !== 'open') return { state: 'failed', error: 'This role was taken down' };
     if (!profile) return { state: 'failed', error: 'Profile not found' };
-    const job = { company: startup.name, title: role.title, description: role.description };
+    const job = { company: startup.name, title: role.title, description: role.description, source: role.source };
     if (role.apply_email) return emailApplication({ app, role, startup, profile, job });
     if (atsApi && secrets && startup.ats_api && !startup.ats_api_error && role.source === 'ats' && String(role.external_id).startsWith(`${startup.ats_api}:`))
       return apiApplication({ app, role, startup, profile, job });
@@ -474,11 +472,21 @@ export function createApplier(
     return lines.join('\n').trim();
   }
 
+  /**
+   * A form question's answer. Facts (work authorization, sponsorship, salary, location, demographics…) come
+   * from HireMe's rules and the developer's profile only. Everything else goes to the language model when one
+   * is set up (it sees the resume and the job), with the rules as the fallback.
+   */
+  async function answerFor(profile, job, question, options = [], short = true) {
+    const rules = () => autoAnswer({ question, options, short, profile, defaults: formDefaults(profile), job }) || '';
+    if (FACTUAL.test(question)) return rules();
+    return (await draftAnswer(env, { ...profile, facts: factsFor(profile) }, profile.email, job, question, short, options)) || rules();
+  }
+
   /** Straight into the startup's applicant system, through its official API (the startup connected it). */
   async function apiApplication({ app, role, startup, profile, job }) {
     const note = await coverNote(env, profile, profile.email, job);
-    const answer = (question, options, short) =>
-      savedAnswer(profile, question) || autoAnswer({ question, options, short, profile, defaults: formDefaults(profile), job }) || '';
+    const answer = async (question, options, short) => savedAnswer(profile, question) || (await answerFor(profile, job, question, options, short));
     if (profile.review_first && !app.approved)
       return { state: 'review', coverNote: note, answers: [{ question: `Goes to ${startup.name} through`, answer: startup.ats_api, source: 'api' }] };
     const r = await atsApi.submit({

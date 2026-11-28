@@ -150,9 +150,23 @@ export function autoAnswer({ question, options = [], short = true, profile: p, d
   // Agreements and simple facts
   if (/18 (years|or older)|over 18|at least 18|legal (working )?age/.test(q)) return yes(true);
   if (/background check|drug (test|screen)|consent|agree|acknowledge|certify|confirm that|accurate/.test(q)) return yes(true);
-  if (/previously (applied|worked|been employed)|former employee|worked (here|for us) before|currently employed (here|by us)|related to anyone|referred by|referral|who referred/.test(q))
-    return options.length ? choose(options, 'no', { positive: false }) || yes(false) : /who|name/.test(q) ? '' : 'No';
-  if (/how did you (hear|find|learn)|where did you (hear|find|see)/.test(q)) return options.length ? choose(options, 'job board', { positive: false }) || choose(options, 'online', { positive: false }) || choose(options, 'other', { positive: false }) || options.filter((o) => !isPlaceholder(o)).at(-1) || '' : 'Job board';
+  // Where they found the role: the truth is HireMe (or the Hacker News thread HireMe found it in). Nobody referred them.
+  const foundOn = job?.source === 'hn' ? 'Hacker News “Who is hiring?” thread' : 'HireMe (a job board for startups)';
+  const sourceQ = /how did you (hear|find|learn|come across)|where did you (hear|find|see|learn|come across)|where did you see|(job|this) (ad|posting|listing|opening)|source of (application|this)|hear about (us|this|the)/.test(q);
+  if (/previously (applied|worked|been employed)|former employee|worked (here|for us) before|currently employed (here|by us)|related to anyone/.test(q))
+    return options.length ? choose(options, 'no', { positive: false }) || yes(false) : 'No';
+  if (/referred by|referral|who referred|refer(red)? you/.test(q) && !sourceQ)
+    return options.length ? choose(options, 'no', { positive: false }) || yes(false) : `No referral. I found the role on ${foundOn}.`;
+  if (sourceQ)
+    return options.length
+      ? choose(options, 'hireme', { positive: false }) ||
+          (job?.source === 'hn' && choose(options, 'hacker news', { positive: false })) ||
+          choose(options, 'job board', { positive: false }) ||
+          choose(options, 'online', { positive: false }) ||
+          choose(options, 'other', { positive: false }) ||
+          options.filter((o) => !isPlaceholder(o)).at(-1) ||
+          ''
+      : `Found it on ${foundOn}`;
   if (/preferred (first )?name|nickname|what should we call you/.test(q)) return firstName(p);
 
   // Preferences and availability: lean yes (unless the developer said otherwise on their profile)

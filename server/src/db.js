@@ -266,6 +266,11 @@ export function openDb(file = DB_PATH) {
     }
     db.exec('PRAGMA user_version = 3');
   }
+  // One-time: questions like "Who referred you or where did you see our job ad?" are answered now; try those again.
+  if (db.prepare('PRAGMA user_version').get().user_version < 4) {
+    db.exec("UPDATE applications SET state = 'queued', error = NULL WHERE state = 'needs_you'");
+    db.exec('PRAGMA user_version = 4');
+  }
 
   // HireMe is for developers only now: founder accounts (and accounts that never picked) become developers.
   db.exec("UPDATE users SET role = 'dev' WHERE role != 'dev'");
