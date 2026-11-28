@@ -313,10 +313,12 @@ export function createApp(
     if (!name.trim() && !emails.some((e) => /@/.test(e) && !/\.invalid$/.test(e))) return res.status(400).json({ error: 'Add your name first, so HireMe knows who to look for' });
     try {
       const site = str(req.body?.website, 300) || p.links?.portfolio || '';
+      // "Find me" next to the GitHub box only needs GitHub; next to the LinkedIn box it also reads their site and searches.
+      const githubOnly = req.body?.only === 'github';
       const [candidates, fromSite, linkedinMatches] = await Promise.all([
         finder.find({ name, emails, location }),
-        finder.linkedinFromSite?.(site).catch(() => '') ?? '',
-        finder.searchLinkedin?.({ name, location }).catch((e) => (log.warn?.(`[findme] LinkedIn search: ${e.message}`), [])) ?? null,
+        githubOnly ? '' : (finder.linkedinFromSite?.(site).catch(() => '') ?? ''),
+        githubOnly ? null : (finder.searchLinkedin?.({ name, location }).catch((e) => (log.warn?.(`[findme] LinkedIn search: ${e.message}`), [])) ?? null),
       ]);
       res.json({
         candidates,

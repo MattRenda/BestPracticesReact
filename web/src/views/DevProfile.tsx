@@ -221,26 +221,28 @@ export function DevProfileView({ isGuest, pendingEmail, onSaved }: { isGuest: bo
         <ApplyingSection p={p} update={update} onResume={(patch) => setP((cur) => ({ ...cur, ...patch }))} toast={setToast} />
 
         <fieldset className="group">
-          <legend className="legend-row">
-            <span>Links</span>
-            <FindMe
-              who={{ name: p.name, location: p.location, website: p.links?.portfolio }}
-              links={p.links ?? {}}
-              onPick={saveLinks}
-            />
-          </legend>
+          <legend>Links</legend>
+          {/* Each box has its own Find me; a sheet opened from it isn't inside a <label>, so taps in it don't focus the box. */}
           <div className="row2">
-            <label className="field">
-              <span>GitHub</span>
-              <input type="url" value={p.links?.github ?? ''} onChange={(e) => update({ links: { ...p.links, github: e.target.value } })} placeholder="https://github.com/you" />
-            </label>
-            <label className="field">
-              <span>LinkedIn</span>
+            <div className="field">
+              <label className="field-label" htmlFor="link-github">
+                GitHub
+              </label>
               <span className="input-with-btn">
-                <input type="url" value={p.links?.linkedin ?? ''} onChange={(e) => update({ links: { ...p.links, linkedin: e.target.value } })} placeholder="https://www.linkedin.com/in/you" />
+                <input id="link-github" type="url" value={p.links?.github ?? ''} onChange={(e) => update({ links: { ...p.links, github: e.target.value } })} placeholder="https://github.com/you" />
+                <FindMe kind="github" who={{ name: p.name, location: p.location }} onPick={(url) => saveLinks({ github: url })} />
+              </span>
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="link-linkedin">
+                LinkedIn
+              </label>
+              <span className="input-with-btn">
+                <input id="link-linkedin" type="url" value={p.links?.linkedin ?? ''} onChange={(e) => update({ links: { ...p.links, linkedin: e.target.value } })} placeholder="https://www.linkedin.com/in/you" />
+                <FindMe kind="linkedin" who={{ name: p.name, location: p.location, website: p.links?.portfolio }} onPick={(url) => saveLinks({ linkedin: url })} />
                 <PasteLinkedIn onLink={(url) => saveLinks({ linkedin: url })} onError={setToast} />
               </span>
-            </label>
+            </div>
           </div>
           <label className="field">
             <span>Website or portfolio</span>

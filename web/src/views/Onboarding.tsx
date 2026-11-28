@@ -320,17 +320,15 @@ export function Onboarding({ isGuest, email, pendingEmail, onDone }: { isGuest: 
     case 'links':
       body = (
         <>
-          <Q title="Where can startups see your work?" sub="Most applications ask for these. A username is fine, or let HireMe find you." />
-          <FindMe
-            who={{ name: `${d.first} ${d.last}`.trim(), email: d.email || email, location: d.location, website: d.links.portfolio }}
-            links={d.links}
-            onPick={(found) => update({ links: { ...d.links, ...found } })}
-          />
+          <Q title="Where can startups see your work?" sub="Most applications ask for these. A username is fine, or tap Find me." />
           {(['linkedin', 'github', 'portfolio'] as const).map((k) => (
-            <label key={k} className="field ob-field">
-              <span>{k === 'linkedin' ? 'LinkedIn' : k === 'github' ? 'GitHub' : 'Website or portfolio'}</span>
+            <div key={k} className="field ob-field">
+              <label className="field-label" htmlFor={`ob-${k}`}>
+                {k === 'linkedin' ? 'LinkedIn' : k === 'github' ? 'GitHub' : 'Website or portfolio'}
+              </label>
               <span className="input-with-btn">
                 <input
+                  id={`ob-${k}`}
                   value={d.links[k] ?? ''}
                   onChange={(e) => update({ links: { ...d.links, [k]: e.target.value } })}
                   placeholder={k === 'linkedin' ? 'linkedin.com/in/you' : k === 'github' ? 'github.com/you' : 'you.dev'}
@@ -338,9 +336,16 @@ export function Onboarding({ isGuest, email, pendingEmail, onDone }: { isGuest: 
                   autoCapitalize="off"
                   autoCorrect="off"
                 />
+                {k !== 'portfolio' && (
+                  <FindMe
+                    kind={k}
+                    who={{ name: `${d.first} ${d.last}`.trim(), email: d.email || email, location: d.location, website: d.links.portfolio }}
+                    onPick={(url) => update({ links: { ...d.links, [k]: url } })}
+                  />
+                )}
                 {k === 'linkedin' && <PasteLinkedIn onLink={(url) => update({ links: { ...d.links, linkedin: url } })} onError={() => {}} />}
               </span>
-            </label>
+            </div>
           ))}
         </>
       )

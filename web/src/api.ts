@@ -60,7 +60,7 @@ export const api = {
 
   report: (id: number, reason: string, detail = '') => call<{ ok: boolean }>('POST', '/reports', { type: 'startup', id, reason, detail }),
 
-  findLinks: (who: { name?: string; email?: string; location?: string; website?: string }) =>
+  findLinks: (who: { name?: string; email?: string; location?: string; website?: string; only?: 'github' | 'linkedin' }) =>
     call<{ candidates: FoundAccount[]; linkedin: { url: string; from: string } | null; linkedinMatches: FoundLinkedin[] | null; linkedinSearch?: { enabled: boolean; name: string } }>('POST', '/profile/find-links', who),
 
   hiring: () => call<Hiring>('GET', '/hiring'),
