@@ -63,6 +63,11 @@ export const api = {
   findLinks: (who: { name?: string; email?: string; location?: string; website?: string; only?: 'github' | 'linkedin' }) =>
     call<{ candidates: FoundAccount[]; linkedin: { url: string; from: string } | null; linkedinMatches: FoundLinkedin[] | null; linkedinSearch?: { enabled: boolean; name: string } }>('POST', '/profile/find-links', who),
 
+  startCheck: (id: number) => call<{ ok: boolean }>('POST', `/applications/${id}/check`),
+  checkStatus: (id: number, since: number) =>
+    call<{ seq: number; message: string; image?: string | null; w: number; h: number; finished: boolean; result: { state: string; error: string } | null }>('GET', `/applications/${id}/check?since=${since}`),
+  checkInput: (id: number, input: { x?: number; y?: number; done?: boolean; cancel?: boolean }) => call<{ ok: boolean }>('POST', `/applications/${id}/check/input`, input),
+
   hiring: () => call<Hiring>('GET', '/hiring'),
   createCompany: (c: Partial<HiringCompany>) => call<Hiring>('POST', '/hiring/startup', c),
   saveCompany: (c: Partial<HiringCompany>) => call<Hiring>('PUT', '/hiring/startup', c),

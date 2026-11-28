@@ -633,3 +633,11 @@ a { color: var(--moss); }
 .ats-panel { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--rule); }
 .ats-panel h2 { font-size: var(--t-lg, 1.2rem); margin: 0 0 6px; }
 .ats-panel .input-with-btn .muted { white-space: nowrap; }
+
+/* Prove you're human */
+.human-box { margin: 12px 0; padding: 14px; border: 1px solid var(--accent); border-radius: 12px; }
+.human-check { display: grid; gap: 10px; }
+.human-frame { width: 100%; max-width: 420px; height: auto; border-radius: 6px; border: 1px solid var(--rule); touch-action: manipulation; cursor: pointer; justify-self: center; }
+.human-wait { height: 80px; border-radius: 6px; background: linear-gradient(90deg, var(--rule), transparent, var(--rule)); background-size: 200% 100%; animation: human-wait 1.2s linear infinite; }
+@keyframes human-wait { to { background-position: -200% 0; } }
+.human-done { font-weight: 700; color: var(--accent); }

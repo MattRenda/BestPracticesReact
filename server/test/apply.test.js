@@ -23,7 +23,8 @@ before(async () => {
   const s = express();
   s.use(express.json());
   s.get('/job', (_req, res) => res.sendFile(path.join(here, 'fixtures/apply.html')));
-  s.get('/recaptcha/api2/anchor', (_req, res) => res.send('<div>I am not a robot</div>'));
+  // A stand-in for a real check: tapping it tells the page it passed (the page then removes it)
+  s.get('/recaptcha/api2/anchor', (_req, res) => res.send('<body style="margin:0"><div style="height:80px;cursor:pointer" onclick="parent.postMessage(\'hireme-test-solved\', \'*\')">I am not a robot</div></body>'));
   s.post('/submit', (req, res) => (submissions.push(req.body), res.json({ ok: true })));
   s.get('/thanks', (_req, res) => res.send('<h1>Thank you for applying!</h1>'));
   site = s.listen(0);
@@ -46,7 +47,7 @@ before(async () => {
 
   // An imported (listed) startup whose application form is the local mock
   const sid = db.prepare("INSERT INTO startups (name, website, domain, headcount, source, status) VALUES ('Acme', 'https://acme.example', 'acme.example', 8, 'yc', 'listed')").run().lastInsertRowid;
-  for (const q of ['', '?captcha=1', '?extra=1', '?extra=1&b=1', '?invisible=1', '?office=1'])
+  for (const q of ['', '?captcha=1', '?extra=1', '?extra=1&b=1', '?invisible=1', '?office=1', '?captcha=2'])
     db.prepare("INSERT INTO roles (startup_id, source, external_id, title, description, apply_url, skills) VALUES (?, 'ats', ?, 'Senior React Engineer', 'React and Node at Acme.', ?, 'React')").run(sid, `ashby:${q || 'main'}`, `${siteBase}/job${q}`);
 
   try {
@@ -179,6 +180,43 @@ test('A CAPTCHA fails quietly; unanswerable questions come back to the developer
   assert.equal(submissions.at(-1).clearance, 'No');
   const profile = (await dev.req('GET', '/profile')).body;
   assert.equal(profile.saved_answers[0].answer, 'No', 'saved for next time');
+});
+
+test('Prove you’re human: the developer does the site’s check themselves, then HireMe sends it', async (t) => {
+  if (!browserOk) return t.skip('no browser available');
+  const dev = client();
+  await dev.signIn('matt@example.com');
+  await dev.req('POST', `/deck/${roleId('?captcha=2')}`, { liked: true });
+  await applier.tick();
+  let a = (await dev.req('GET', '/applications')).body.find((x) => x.role_id === roleId('?captcha=2'));
+  assert.equal(a.state, 'failed');
+  assert.equal(a.human_check, true);
+  const before = submissions.length;
+
+  assert.equal((await dev.req('POST', `/applications/${a.id}/check`)).status, 200);
+  let poll;
+  let tapped = false;
+  for (let i = 0; i < 120; i++) {
+    poll = (await dev.req('GET', `/applications/${a.id}/check`)).body;
+    if (poll.finished) break;
+    if (poll.image && !tapped) {
+      assert.ok(poll.w >= 250 && poll.h >= 60, 'a picture of just the check');
+      assert.match(poll.message, /human/);
+      await dev.req('POST', `/applications/${a.id}/check/input`, { x: 0.5, y: 0.5 });
+      tapped = true;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  assert.ok(tapped, 'the check was shown');
+  assert.deepEqual(poll.result, { state: 'submitted', error: '' });
+  assert.equal(submissions.length, before + 1, 'sent once the developer passed the check');
+  a = (await dev.req('GET', '/applications')).body.find((x) => x.id === a.id);
+  assert.equal(a.state, 'submitted');
+  assert.equal(a.human_check, false);
+  // Somebody else can't watch or tap
+  const other = client();
+  await other.signIn('nosy@example.com');
+  assert.equal((await other.req('GET', `/applications/${a.id}/check`)).status, 404);
 });
 
 test('Ashby-style invisible reCAPTCHA doesn’t stop an application', async (t) => {

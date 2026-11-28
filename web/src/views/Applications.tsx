@@ -1,3 +1,4 @@
+import { HumanCheck } from '../components/HumanCheck'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Application, SavedRole } from '../types'
@@ -196,6 +197,7 @@ function AppList({ title, note, apps, onOpen }: { title: string; note?: string; 
               <span className="t-role">{a.title}</span>
               <span className="t-last">
                 <StateChip state={a.state} />
+                {a.human_check && <span className="pill wait">Prove you’re human</span>}
               </span>
             </button>
           </li>
@@ -225,10 +227,12 @@ function ApplicationSheet({ app, onClose, onChanged }: { app: Application | null
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [current, setCurrent] = useState<Application | null>(app)
+  const [checking, setChecking] = useState(false)
   if (current?.id !== app?.id) {
     setCurrent(app)
     setAnswers({})
     setError('')
+    setChecking(false)
   }
   if (!app) return null
 
@@ -255,7 +259,22 @@ function ApplicationSheet({ app, onClose, onChanged }: { app: Application | null
           {app.title} · <StateChip state={app.state} />
           {app.submitted_at && ` on ${new Date(`${app.submitted_at.replace(' ', 'T')}Z`).toLocaleDateString()}`}
         </p>
-        {app.error && app.state !== 'submitted' && <p className="callout small">{app.error}</p>}
+        {app.error && app.state !== 'submitted' && !checking && <p className="callout small">{app.error}</p>}
+
+        {(app.human_check || checking) && (
+          <section className="human-box">
+            {checking ? (
+              <HumanCheck appId={app.id} onFinished={() => onChanged()} />
+            ) : (
+              <>
+                <p className="small">This site checks that a person is applying. Do its check yourself and HireMe sends the application.</p>
+                <button className="btn primary" onClick={() => setChecking(true)}>
+                  Prove you’re human and send
+                </button>
+              </>
+            )}
+          </section>
+        )}
 
         {app.state === 'needs_you' && app.missing.length > 0 && (
           <form

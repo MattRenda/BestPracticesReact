@@ -65,6 +65,7 @@
     f.width = 300; f.height = 80;
     document.getElementById('captcha-slot').appendChild(f);
   }
+  window.addEventListener('message', (e) => { if (e.data === 'hireme-test-solved') document.getElementById('captcha-slot').innerHTML = ''; });
   if (location.search.includes('invisible')) {
     // Ashby-style invisible reCAPTCHA: a badge, nothing to solve
     const f = document.createElement('iframe');

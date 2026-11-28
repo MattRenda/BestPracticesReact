@@ -7,7 +7,7 @@ import { createAuth } from './auth.js';
 import { createMailer } from './mail.js';
 import { siteDomain } from './rules.js';
 import { createImporter } from './importer.js';
-import { createApplier, applyReadiness, formDefaults } from './apply/agent.js';
+import { createApplier, applyReadiness, formDefaults, humanCheckable } from './apply/agent.js';
 import { parseResume } from './resume-parse.js';
 import { hiringRoutes } from './hiring.js';
 import { createSecrets } from './secrets.js';
@@ -475,6 +475,7 @@ export function createApp(
       answers: parse(a.answers, []),
       cover_note: a.cover_note,
       has_screenshot: !!a.screenshot,
+      human_check: humanCheckable(a), // blocked by an "are you human?" check the developer can do
       created_at: a.created_at,
       updated_at: a.updated_at,
       submitted_at: a.submitted_at,
@@ -587,6 +588,89 @@ export function createApp(
     if (given.length) saveAnswers(req.user.id, given); // edits are used word for word when it's filled again
     db.prepare('UPDATE applications SET approved = 1 WHERE id = ?').run(a.id);
     res.json(publicApplication(applier.enqueue(req.user.id, a.role_id)));
+  });
+
+  // ---------- "Prove you're human" ----------
+  // An application blocked by a site's "are you human?" check can be sent with the developer doing that check
+  // themselves: HireMe fills the form again while they watch, shows them just the site's check, and passes
+  // their taps to it. One session per application, a few at a time, gone a few minutes after it ends.
+  const checks = new Map(); // application id → session
+  const MAX_CHECKS = 3;
+  function newCheck(appId, devId) {
+    const s = {
+      appId,
+      devId,
+      seq: 0,
+      image: null,
+      w: 0,
+      h: 0,
+      message: 'Starting…',
+      taps: [],
+      doneTapped: false,
+      cancelled: false,
+      finished: false,
+      result: null,
+      lastSeen: Date.now(),
+      status(m) {
+        s.message = m;
+      },
+      frame(buf, w = 0, h = 0) {
+        s.image = buf ? buf.toString('base64') : null;
+        s.w = w;
+        s.h = h;
+        s.seq++;
+      },
+      takeTaps() {
+        return s.taps.splice(0);
+      },
+    };
+    return s;
+  }
+  setInterval(() => {
+    for (const [id, s] of checks) {
+      if (!s.finished && Date.now() - s.lastSeen > 90_000) s.cancelled = true; // they left
+      if (s.finished && Date.now() - s.lastSeen > 5 * 60_000) checks.delete(id);
+    }
+  }, 30_000).unref();
+
+  app.post('/api/applications/:id/check', requireRole('dev'), (req, res) => {
+    const a = ownApplication(req, res);
+    if (!a) return;
+    const running = checks.get(a.id);
+    if (running && !running.finished) return res.json({ ok: true });
+    if (!humanCheckable(a)) return res.status(409).json({ error: 'That application isn’t waiting on a human check' });
+    if ([...checks.values()].filter((s) => !s.finished).length >= MAX_CHECKS) return res.status(503).json({ error: 'A few people are doing this right now. Try again in a minute.' });
+    const s = newCheck(a.id, req.user.id);
+    checks.set(a.id, s);
+    applier
+      .liveApply(a.id, s)
+      .then((r) => (s.result = { state: r.state, error: r.error || '' }))
+      .catch((e) => (s.result = { state: 'failed', error: String(e.message || e).slice(0, 200) }))
+      .finally(() => {
+        s.finished = true;
+        s.frame(null);
+      });
+    res.json({ ok: true });
+  });
+
+  /** Poll: the latest picture of the check (only when it changed since `since`), the status and the result. */
+  app.get('/api/applications/:id/check', requireRole('dev'), (req, res) => {
+    const s = checks.get(Number(req.params.id));
+    if (!s || s.devId !== req.user.id) return res.status(404).json({ error: 'Not found' });
+    s.lastSeen = Date.now();
+    const since = Number(req.query.since) || 0;
+    res.json({ seq: s.seq, message: s.message, image: s.seq > since ? s.image : undefined, w: s.w, h: s.h, finished: s.finished, result: s.result });
+  });
+
+  app.post('/api/applications/:id/check/input', requireRole('dev'), (req, res) => {
+    const s = checks.get(Number(req.params.id));
+    if (!s || s.devId !== req.user.id || s.finished) return res.status(404).json({ error: 'Not found' });
+    s.lastSeen = Date.now();
+    const { x, y, done, cancel } = req.body || {};
+    if (cancel) s.cancelled = true;
+    else if (done) s.doneTapped = true;
+    else if (Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1 && s.taps.length < 20) s.taps.push({ x, y });
+    res.json({ ok: true });
   });
 
   app.post('/api/applications/:id/retry', requireRole('dev'), (req, res) => {

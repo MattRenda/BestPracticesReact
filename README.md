@@ -37,6 +37,10 @@ ycombinator.com itself is never scraped; its terms of use don't allow it.
 
 **Form roles** (Ashby, Greenhouse, Lever, other sites) are in the deck too. Many of those sites have bot checks (reCAPTCHA, hCaptcha, Turnstile) that can block an automated submission; HireMe never tries to get around them. When one blocks it, or the site shows no confirmation, the application is marked "Didn't go through" with a link to apply on their site, without emailing or prompting the developer (like Sprout). Admins see how many were tried, sent and didn't go through per system in **Admin → What's in the deck**, and can switch a system off.
 
+### Prove you're human
+
+When a site's "are you human?" check (reCAPTCHA, hCaptcha, Turnstile) blocks an application, the developer can do that check themselves: in Applications, **Prove you're human and send** fills the form again while they watch, shows them a live picture of just the site's check, and passes their taps to it (`humanCheck` in `server/src/apply/agent.js`, `/api/applications/:id/check`). HireMe never answers a check itself; if they don't finish it, nothing is sent. Invisible checks that never show a challenge can't be helped this way.
+
 ## Startups listing their own roles
 
 `#/hiring` (linked from the home page) lets someone at a startup post developer roles directly (`server/src/hiring.js`):

@@ -94,6 +94,13 @@ async function launchBrowser(env) {
   return chromium.launch(opts);
 }
 
+// Failures from "are you human?" checks. The developer can take these on themselves from Applications.
+export const CHECK_BLOCKED = 'Didn’t go through: the site has a bot check (CAPTCHA). Prove you’re human to send it, or apply on their site';
+const CHECK_BLOCKED_SUBMIT = 'Didn’t go through: a bot check (CAPTCHA) appeared when submitting. Prove you’re human to send it, or apply on their site';
+const CHECK_UNSOLVED = 'Didn’t go through: the “are you human?” check wasn’t finished. You can try again or apply on their site';
+/** Applications a person can finish by doing the site's human check themselves. */
+export const humanCheckable = (a) => a?.state === 'failed' && /bot check|CAPTCHA|human/i.test(a.error || '');
+
 export function createApplier(
   db,
   {
@@ -225,6 +232,57 @@ export function createApplier(
    * which Ashby uses on every form) show a small badge and need nothing from anyone, so they don't count;
    * neither do challenge frames parked off-screen until they're needed.
    */
+  /**
+   * "Are you human?" checks, done by the developer themselves: HireMe shows them the site's own check (a live
+   * picture of just that box, refreshed twice a second) and passes their taps through. Nothing here solves or
+   * skips a check; when the developer doesn't finish it, the application fails as before.
+   * Resolves true once the check is gone (passed), false on timeout or if they give up.
+   */
+  async function humanCheck(page, human, { timeoutMs = 4 * 60_000 } = {}) {
+    human.status('Prove you’re human: tap the check below, the way you would on their site.');
+    const end = Date.now() + timeoutMs;
+    let clear = 0;
+    while (Date.now() < end && !human.cancelled) {
+      const el = await captchaElement(page);
+      if (!el) {
+        if (++clear >= 2) {
+          human.frame(null);
+          return true;
+        }
+      } else {
+        clear = 0;
+        const box = await el.boundingBox().catch(() => null);
+        if (box) {
+          const shot = await page.screenshot({ type: 'jpeg', quality: 70, clip: box }).catch(() => null);
+          if (shot) human.frame(shot, box.width, box.height);
+          for (const t of human.takeTaps()) await page.mouse.click(box.x + t.x * box.width, box.y + t.y * box.height).catch(() => {});
+        }
+      }
+      if (human.doneTapped) {
+        human.doneTapped = false;
+        if (!(await captchaElement(page))) return true;
+      }
+      await sleep(500);
+    }
+    human.frame(null);
+    return false;
+  }
+  /** The visible check on the page: the picture challenge if one is open, else the checkbox. */
+  async function captchaElement(page) {
+    let best = null;
+    for (const f of page.frames()) {
+      const u = f.url();
+      if (!CAPTCHA_FRAME.test(u) || /[?&]size=invisible/.test(u)) continue;
+      const el = await f.frameElement().catch(() => null);
+      if (!el || !(await el.isVisible().catch(() => false))) continue;
+      const box = await el.boundingBox().catch(() => null);
+      if (!box || box.width < 30 || box.height < 30) continue;
+      const area = box.width * box.height;
+      if (!best || area > best.area) best = { el, area };
+    }
+    return best?.el ?? null;
+  }
+
   async function hasCaptcha(page, { challengeOnly = false } = {}) {
     for (const f of page.frames()) {
       const u = f.url();
@@ -292,7 +350,7 @@ export function createApplier(
    * Fills (and unless practicing, submits) one application.
    * @returns {{state:'submitted'|'needs_you'|'failed'|'practiced', error, missing:string[], answers:object[], fieldsFilled, screenshot:Buffer|null}}
    */
-  async function applyTo({ url, profile, job, practice = false, roleId = null }) {
+  async function applyTo({ url, profile, job, practice = false, roleId = null, human = null }) {
     const answers = [];
     const resume = await resumeFor(profile);
     const note = await coverNote(env, profile, profile.email, job);
@@ -357,18 +415,34 @@ export function createApplier(
 
       if (!filled) return await done('failed', 'No application form found on the page');
       if (uniq.length) return await done('needs_you', `${uniq.length === 1 ? 'A question' : `${uniq.length} questions`} only you can answer`, uniq, filled);
-      if (await hasCaptcha(page)) return await done('failed', 'Didn’t go through: the site has a bot check (CAPTCHA). You can apply on their site', [], filled);
+      if (await hasCaptcha(page)) {
+        if (!human) return await done('failed', CHECK_BLOCKED, [], filled);
+        if (!(await humanCheck(page, human))) return await done('failed', CHECK_UNSOLVED, [], filled);
+      }
       if (practice) return await done('practiced', 'Filled but not submitted (test)', [], filled);
 
       const submit = await findSubmit(page);
       if (!submit) return await done('failed', 'Didn’t go through: HireMe couldn’t find the Submit button. You can apply on their site', [], filled);
       const startUrl = page.url();
+      human?.status('Sending…');
       await submit.click({ timeout: 5000 });
+      let checked = false;
       for (let waited = 0; waited < 25_000; waited += 1000) {
         await sleep(1000);
         const u = page.url();
         if ((u !== startUrl && /confirm|thank|success|submitted|complete/i.test(u)) || SUCCESS.test(await pageText(page))) return await done('submitted', '', [], filled);
-        if (await hasCaptcha(page, { challengeOnly: true })) return await done('failed', 'Didn’t go through: a bot check (CAPTCHA) appeared when submitting. You can apply on their site', [], filled);
+        if (await hasCaptcha(page, { challengeOnly: true })) {
+          // The developer can prove they're human themselves; otherwise it's a quiet failure.
+          if (!human || checked) return await done('failed', human ? CHECK_UNSOLVED : CHECK_BLOCKED_SUBMIT, [], filled);
+          checked = true;
+          if (!(await humanCheck(page, human))) return await done('failed', CHECK_UNSOLVED, [], filled);
+          human.status('Sending…');
+          // Most sites send the form once the check passes; if it's still on the form, press Submit again.
+          await sleep(1500);
+          if (page.url() === startUrl && !SUCCESS.test(await pageText(page))) await (await findSubmit(page))?.click({ timeout: 5000 }).catch(() => {});
+          waited = 0;
+          continue;
+        }
         if (waited >= 3000) {
           const errors = await validationErrors(page);
           if (errors.length) return await done('failed', `Didn’t go through: the form didn’t accept it (${errors.slice(0, 3).join('; ')})`, [], filled);
@@ -439,7 +513,7 @@ export function createApplier(
     }
   }
 
-  async function processOne(app) {
+  async function processOne(app, human = null) {
     const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(app.role_id);
     const startup = role && db.prepare('SELECT * FROM startups WHERE id = ?').get(role.startup_id);
     const profile = profileFor(app.dev_id);
@@ -456,7 +530,7 @@ export function createApplier(
       const r = await applyTo({ url, profile, job, practice: true, roleId: role.id });
       return r.state === 'practiced' ? { ...r, state: 'review', error: '' } : r;
     }
-    return applyTo({ url, profile, job, roleId: role.id });
+    return applyTo({ url, profile, job, roleId: role.id, human });
   }
 
   /**
@@ -598,6 +672,27 @@ export function createApplier(
     resumesDir,
     shotsDir,
     status: () => ({ ...state }),
+    /**
+     * Runs one blocked application now, with the developer watching so they can do the site's human check.
+     * `human` is a live session (see app.js). Records and returns the result like the queue does.
+     */
+    async liveApply(appId, human) {
+      const app = db.prepare('SELECT * FROM applications WHERE id = ?').get(appId);
+      if (!app) return { state: 'failed', error: 'Not found' };
+      db.prepare("UPDATE applications SET state = 'running', attempts = attempts + 1, updated_at = datetime('now') WHERE id = ?").run(app.id);
+      human.status('Filling in the application…');
+      let result;
+      try {
+        result = await processOne(app, human);
+      } catch (e) {
+        result = { state: 'failed', error: String(e.message || e).split('\n')[0].slice(0, 200) };
+      } finally {
+        releaseBrowserSoon();
+      }
+      record(app, result);
+      log.info?.(`[apply] #${app.id} (with the developer): ${result.state}${result.error ? ` (${result.error})` : ''}`);
+      return result;
+    },
     /** Admin check against a real job form with a made-up applicant. Never submits. */
     async testRun(url, job) {
       const profile = {

@@ -64,6 +64,8 @@ export interface Application {
   answers: { question: string; answer: string; source: 'saved' | 'drafted' }[]
   cover_note: string
   has_screenshot: boolean
+  /** Blocked by an "are you human?" check the developer can do themselves */
+  human_check?: boolean
   created_at: string
   updated_at: string
   submitted_at: string | null
