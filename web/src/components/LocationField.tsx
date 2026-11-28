@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { guessLocation, preciseLocation } from '../location'
 
 /**
- * A "City, State" box that fills itself in: a guess from the connection when it's empty, and a
- * "Use my location" button for the device's location. Whatever the developer types wins.
+ * A "City, State" box that fills itself in when it's empty (device location if allowed, else the connection's
+ * city), with a "Use my location" button to redo it. Whatever the developer types wins.
  */
 export function LocationField({
   value,
@@ -23,16 +23,31 @@ export function LocationField({
     latest.current = { value, onChange }
   })
 
-  // Prefill once, only if the box is still empty when the guess comes back.
+  // Prefill once when the box is empty. The connection's city is quick but can be a town off (it's where the
+  // internet provider is), so the device's location replaces it when the browser allows (it asks once, right
+  // at this question). Nothing typed by the developer is ever replaced.
   useEffect(() => {
     if (latest.current.value) return
     let live = true
+    let auto = ''
+    const fill = (place: string, why: string) => {
+      const cur = latest.current.value
+      if (!live || !place || (cur && cur !== auto)) return
+      auto = place
+      latest.current.onChange(place)
+      setNote(why)
+    }
     guessLocation().then((place) => {
-      if (live && place && !latest.current.value) {
-        latest.current.onChange(place)
-        setNote('Filled in from your connection. Change it if it’s off.')
-      }
+      if (!auto) fill(place, 'Filled in from your connection. Change it if it’s off.')
     })
+    ;(async () => {
+      const state = await navigator.permissions
+        ?.query({ name: 'geolocation' })
+        .then((s) => s.state)
+        .catch(() => 'prompt')
+      if (state === 'denied') return
+      fill(await preciseLocation(), 'Filled in from your location.')
+    })()
     return () => {
       live = false
     }
