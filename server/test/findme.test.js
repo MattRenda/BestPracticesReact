@@ -107,3 +107,14 @@ test('LinkedIn profiles from web search results (not LinkedIn): name and city de
   assert.equal(r[0].location, 'Sacramento');
   assert.equal(await createFindMe({ fetchImpl, braveKey: '', log: { info() {} } }).searchLinkedin({ name: 'Dana Smith' }), null, 'off without a key');
 });
+
+test('LinkedIn search stops when the monthly budget is used up', async () => {
+  let calls = 0;
+  let budget = 1;
+  const fetchImpl = async () => (calls++, json({ web: { results: [] } }));
+  const f = createFindMe({ fetchImpl, braveKey: 'k', log: { info() {} }, spendSearch: () => budget-- > 0 });
+  assert.deepEqual(await f.searchLinkedin({ name: 'Dana Smith', location: 'Sacramento, CA' }), []);
+  assert.equal(calls, 1, 'the second (no-city) search was skipped');
+  await f.searchLinkedin({ name: 'Dana Smith' });
+  assert.equal(calls, 1);
+});

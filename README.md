@@ -119,6 +119,7 @@ Any host that runs a Dockerfile with a volume mounted at `/data` works the same 
 | `SMTP_URL`, `SMTP_PASS`, `MAIL_FROM` | Outgoing email for sign-in links and application updates. For Gmail: `SMTP_URL=smtps://you%40gmail.com@smtp.gmail.com:465`, `SMTP_PASS=<app password>`, `MAIL_FROM=HireMe <you@gmail.com>` |
 | `GITHUB_TOKEN` | Optional. A GitHub token (no scopes needed) for "Find me"; without one GitHub allows only a few searches an hour |
 | `BRAVE_SEARCH_KEY` | Optional. A Brave Search API key; "Find me" then suggests LinkedIn profiles from web search results for the developer's name and city ($5/month in free credits ≈ 1,000 searches) |
+| `BRAVE_MONTHLY_LIMIT` | Optional. Most Brave searches per calendar month (default 900, inside the $5 free credit); past it, Find me skips LinkedIn search |
 | `EMAIL_DAILY_CAP` | Optional. Application emails per day across all developers (default 300) |
 | `DB_PATH` | SQLite file (default `server/data/hireme.db`; `/data/hireme.db` in Docker) |
 

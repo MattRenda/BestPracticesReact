@@ -287,7 +287,17 @@ export function createApp(
   // With { parse: true } the response carries suggested profile fields read from the PDF.
   // "Find me": GitHub accounts that look like the developer's (and the LinkedIn they link to). Nothing is
   // saved here; the developer confirms one in the app.
-  const finder = findMe || createFindMe({ fetchImpl, log });
+  // Brave bills per search beyond a $5 monthly credit (~1,000 searches). Stop at BRAVE_MONTHLY_LIMIT (default
+  // 900) so there's never a bill; "Find me" then falls back to GitHub, the developer's website and Paste.
+  const braveLimit = Number(process.env.BRAVE_MONTHLY_LIMIT) || 900;
+  const spendSearch = () => {
+    const key = `brave_searches:${new Date().toISOString().slice(0, 7)}`;
+    const used = Number(db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value || 0);
+    if (used >= braveLimit) return false;
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, String(used + 1));
+    return true;
+  };
+  const finder = findMe || createFindMe({ fetchImpl, log, spendSearch });
   app.post('/api/profile/find-links', requireUser, async (req, res) => {
     if (auth.limited(`findme:${req.user.id}`, 15, 24 * 3600_000)) return res.status(429).json({ error: 'That’s a lot of searches today. Try again tomorrow.' });
     const p = getProfile(req.user.id) || {};

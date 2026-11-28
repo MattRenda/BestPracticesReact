@@ -17,6 +17,8 @@ export function createFindMe({
   fetchImpl = fetch,
   token = process.env.GITHUB_TOKEN,
   braveKey = process.env.BRAVE_SEARCH_KEY,
+  /** Called before each paid search; returns false once this month's budget is used up. */
+  spendSearch = () => true,
   log = console,
   pageFetch = (u) => fetchPublicPage(u, { fetchImpl }),
 } = {}) {
@@ -31,6 +33,7 @@ export function createFindMe({
     if (fullName.split(/\s+/).length < 2) return [];
     const city = clean(location.split(',')[0]);
     const run = async (q) => {
+      if (!spendSearch()) return [];
       const res = await fetchImpl(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=10&safesearch=strict`, {
         headers: { accept: 'application/json', 'x-subscription-token': braveKey },
         signal: AbortSignal.timeout(8000),
