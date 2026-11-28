@@ -222,7 +222,11 @@ export interface Hiring {
   existing?: { name: string; website: string; headcount: number } | null
   roles?: HiringRole[]
   imported?: number
+  ats?: { system: AtsSystem; board: string; connected_at: string; error: string } | null
+  atsFound?: { system: AtsSystem; board: string } | null
 }
+
+export type AtsSystem = 'greenhouse' | 'lever' | 'ashby'
 
 /** A GitHub account "Find me" thinks may be the developer's. */
 export interface FoundAccount {

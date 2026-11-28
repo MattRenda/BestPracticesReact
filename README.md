@@ -44,6 +44,7 @@ ycombinator.com itself is never scraped; its terms of use don't allow it.
 - They sign in with their **work email**; the company's website has to be at the same domain (personal addresses like Gmail can't list a company). Coworkers at the same domain join the same company, and a company HireMe already imported (YC, Hacker News) can be claimed the same way.
 - The company must have **50 people or fewer** and not look like a recruiter or staffing firm. Titles must be engineering roles, with a real description.
 - Roles go live in the deck right away; admins get an email about each new company and can take it down, and reports work as for any startup.
+- **Connect your ATS**: a startup on Greenhouse, Lever or Ashby can paste its API key (Greenhouse "Job Board" key, Lever Postings API key, or an Ashby key with Candidates: Write) and its job board name. HireMe checks them, imports the board's developer roles right away (and at every import), and applies to those roles through the system's official application API (`server/src/apply/ats-api.js`): no form, no browser, no CAPTCHA. The job's own questions are answered the same way as on forms; a required one HireMe can't answer comes back to the developer. Keys are encrypted with AES-256-GCM (`server/src/secrets.js`, key from `DATA_KEY` or a random `data.key` next to the database) and never sent back to the browser. A key the ATS rejects is flagged on the startup's page and its roles fall back to normal treatment.
 - A right swipe emails the application to the startup's chosen address (any address at its domain, default the poster's). The startup sees how many applications each role has had, and can edit, close or reopen roles (up to 25 open).
 
 ## Applying for developers
@@ -120,6 +121,7 @@ Any host that runs a Dockerfile with a volume mounted at `/data` works the same 
 | `GITHUB_TOKEN` | Optional. A GitHub token (no scopes needed) for "Find me"; without one GitHub allows only a few searches an hour |
 | `BRAVE_SEARCH_KEY` | Optional. A Brave Search API key; "Find me" then suggests LinkedIn profiles from web search results for the developer's name and city ($5/month in free credits ≈ 1,000 searches) |
 | `BRAVE_MONTHLY_LIMIT` | Optional. Most Brave searches per calendar month (default 900, inside the $5 free credit); past it, Find me skips LinkedIn search |
+| `DATA_KEY` | Optional. Encrypts startups' ATS API keys; without it a random key is kept in `data.key` next to the database |
 | `EMAIL_DAILY_CAP` | Optional. Application emails per day across all developers (default 300) |
 | `DB_PATH` | SQLite file (default `server/data/hireme.db`; `/data/hireme.db` in Docker) |
 

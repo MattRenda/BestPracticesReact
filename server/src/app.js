@@ -10,6 +10,8 @@ import { createImporter } from './importer.js';
 import { createApplier, applyReadiness, formDefaults } from './apply/agent.js';
 import { parseResume } from './resume-parse.js';
 import { hiringRoutes } from './hiring.js';
+import { createSecrets } from './secrets.js';
+import { createAtsApi } from './apply/ats-api.js';
 import { languageOf } from './lang.js';
 import { createFindMe } from './findme.js';
 
@@ -72,8 +74,12 @@ export function createApp(
   app.locals.mailer = mailer;
   const importer = createImporter(db, { fetchImpl, log });
   app.locals.importer = importer;
+  const secrets = createSecrets({ dataDir });
+  const atsApi = createAtsApi({ fetchImpl });
   const applier = createApplier(db, {
     dataDir,
+    secrets,
+    atsApi,
     log,
     notify: (to, subject, text) => mailer.send({ to, subject, text }).catch(() => {}),
     sendMail: (msg) => mailer.send(msg),
@@ -370,7 +376,9 @@ export function createApp(
   const systemOf = "COALESCE(NULLIF(s.ats, 'none'), 'other')";
   const SENDABLE = () => {
     const on = formSystems();
-    return `(r.apply_email IS NOT NULL${on.length ? ` OR ${systemOf} IN (${on.map((x) => `'${x}'`).join(', ')})` : ''})`;
+    // A startup that connected its applicant system: its board's roles always go through, form systems on or off.
+    const viaApi = "(s.ats_api IS NOT NULL AND s.ats_api_error IS NULL AND r.source = 'ats' AND r.external_id LIKE s.ats_api || ':%')";
+    return `(r.apply_email IS NOT NULL OR ${viaApi}${on.length ? ` OR ${systemOf} IN (${on.map((x) => `'${x}'`).join(', ')})` : ''})`;
   };
 
   app.get('/api/deck', requireRole('dev'), (req, res) => {
@@ -674,6 +682,9 @@ export function createApp(
   // ---------- startups listing their own roles ----------
   hiringRoutes(app, {
     db,
+    secrets,
+    atsApi,
+    syncBoard: (id, ats, slug) => importer.syncBoard(id, ats, slug),
     requireUser,
     maxHeadcount: MAX_HEADCOUNT,
     log,

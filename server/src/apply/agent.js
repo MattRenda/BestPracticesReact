@@ -98,6 +98,8 @@ export function createApplier(
   db,
   {
     dataDir,
+    secrets = null,
+    atsApi = null,
     env = process.env,
     log = console,
     notify = () => {},
@@ -447,6 +449,8 @@ export function createApplier(
     if (!profile) return { state: 'failed', error: 'Profile not found' };
     const job = { company: startup.name, title: role.title, description: role.description };
     if (role.apply_email) return emailApplication({ app, role, startup, profile, job });
+    if (atsApi && secrets && startup.ats_api && !startup.ats_api_error && role.source === 'ats' && String(role.external_id).startsWith(`${startup.ats_api}:`))
+      return apiApplication({ app, role, startup, profile, job });
     const url = targetUrl(role, startup);
     if (!url) return { state: 'failed', error: 'No application page for this role' };
     // "Review before sending": fill everything, stop short of Submit, and wait for the developer's OK.
@@ -468,6 +472,30 @@ export function createApplier(
     const end = lines.findLastIndex((l) => /^(thanks|thank you|best|cheers|regards|best regards|sincerely)\b[^.]{0,20}[,!.]?\s*$/i.test(l.trim()));
     if (end >= 0 && end >= lines.length - 3) lines.splice(end);
     return lines.join('\n').trim();
+  }
+
+  /** Straight into the startup's applicant system, through its official API (the startup connected it). */
+  async function apiApplication({ app, role, startup, profile, job }) {
+    const note = await coverNote(env, profile, profile.email, job);
+    const answer = (question, options, short) =>
+      savedAnswer(profile, question) || autoAnswer({ question, options, short, profile, defaults: formDefaults(profile), job }) || '';
+    if (profile.review_first && !app.approved)
+      return { state: 'review', coverNote: note, answers: [{ question: `Goes to ${startup.name} through`, answer: startup.ats_api, source: 'api' }] };
+    const r = await atsApi.submit({
+      system: startup.ats_api,
+      key: secrets.open(startup.ats_api_key),
+      board: startup.ats_api_board,
+      externalId: role.external_id,
+      profile,
+      resume: await resumeFor(profile),
+      note,
+      answer,
+    });
+    if (r.keyRejected) {
+      // Stop using a key the startup revoked; the roles fall back to their normal treatment.
+      db.prepare('UPDATE startups SET ats_api_error = ? WHERE id = ?').run('The API key stopped working. Connect it again.', startup.id);
+    }
+    return { ...r, coverNote: note };
   }
 
   async function emailApplication({ app, role, startup, profile, job }) {

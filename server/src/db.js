@@ -173,6 +173,13 @@ export function openDb(file = DB_PATH) {
     ['ats_slug', 'TEXT'],
     ['ats_checked_at', 'TEXT'],
     ['apply_email', 'TEXT'], // where applications to roles the startup posts on HireMe are emailed
+    // The startup's own applicant tracking system, connected with its API key (sealed by secrets.js):
+    // HireMe then applies to the roles on that board through the system's official API.
+    ['ats_api', 'TEXT'], // 'greenhouse' | 'lever' | 'ashby'
+    ['ats_api_board', 'TEXT'],
+    ['ats_api_key', 'TEXT'],
+    ['ats_api_at', 'TEXT'],
+    ['ats_api_error', 'TEXT'],
   ]);
   // roles.source: 'manual' (old founder-written roles; not shown) | 'ats' (imported from the startup's job board)
   //   | 'hn' (Hacker News "Who is hiring?") | 'direct' (posted on HireMe by someone at the startup).

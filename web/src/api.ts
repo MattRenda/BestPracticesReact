@@ -68,6 +68,8 @@ export const api = {
   saveCompany: (c: Partial<HiringCompany>) => call<Hiring>('PUT', '/hiring/startup', c),
   postRole: (r: Partial<HiringRole>) => call<Hiring>('POST', '/hiring/roles', r),
   saveRole: (id: number, r: Partial<HiringRole>) => call<Hiring>('PUT', `/hiring/roles/${id}`, r),
+  connectAts: (c: { system: string; board: string; key: string }) => call<Hiring>('PUT', '/hiring/ats', c),
+  disconnectAts: () => call<Hiring>('DELETE', '/hiring/ats'),
 
   adminQueue: () => call<AdminQueue>('GET', '/admin/queue'),
   applyMethods: () => call<ApplyMethod[]>('GET', '/admin/apply-methods'),

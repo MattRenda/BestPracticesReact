@@ -629,3 +629,7 @@ a { color: var(--moss); }
 .findme-info a { overflow-wrap: anywhere; }
 .findme-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .findme-close { font-size: 1.2rem; padding: 4px 8px; line-height: 1; }
+
+.ats-panel { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--rule); }
+.ats-panel h2 { font-size: var(--t-lg, 1.2rem); margin: 0 0 6px; }
+.ats-panel .input-with-btn .muted { white-space: nowrap; }

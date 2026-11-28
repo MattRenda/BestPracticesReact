@@ -7,6 +7,7 @@
 import { isEmail, looksLikeAgency, siteDomain } from './rules.js';
 import { extractSkills, isDevRole } from './importer.js';
 import { FREE_MAIL } from './hn.js';
+import { ATS_SYSTEMS } from './apply/ats-api.js';
 
 const str = (v, max) => String(v ?? '').trim().slice(0, max);
 const int = (v) => (v === '' || v == null || !Number.isFinite(Number(v)) ? null : Math.round(Number(v)));
@@ -20,7 +21,7 @@ const sameCompany = (email, domain) => {
   return !!domain && (d === domain || d.endsWith(`.${domain}`));
 };
 
-export function hiringRoutes(app, { db, requireUser, maxHeadcount, notifyAdmins = () => {}, log = console }) {
+export function hiringRoutes(app, { db, requireUser, maxHeadcount, secrets = null, atsApi = null, syncBoard = async () => null, notifyAdmins = () => {}, log = console }) {
   const membership = (userId) =>
     db.prepare('SELECT s.* FROM startup_members m JOIN startups s ON s.id = m.startup_id WHERE m.user_id = ?').get(userId);
 
@@ -74,6 +75,11 @@ export function hiringRoutes(app, { db, requireUser, maxHeadcount, notifyAdmins 
       },
       roles,
       imported,
+      // Their applicant system: connected (never the key itself), or what HireMe found on its own.
+      ats: s.ats_api
+        ? { system: s.ats_api, board: s.ats_api_board, connected_at: s.ats_api_at, error: s.ats_api_error || '' }
+        : null,
+      atsFound: !s.ats_api && ATS_SYSTEMS.includes(s.ats) ? { system: s.ats, board: s.ats_slug } : null,
     };
   }
 
@@ -157,6 +163,44 @@ export function hiringRoutes(app, { db, requireUser, maxHeadcount, notifyAdmins 
       s.id,
     );
     if (applyEmail) db.prepare("UPDATE roles SET apply_email = ? WHERE startup_id = ? AND source = 'direct'").run(applyEmail, s.id);
+    res.json(view(req.user));
+  });
+
+  // ---------- the startup's applicant system ----------
+  // With its API key, HireMe applies to the roles on its job board through the system's official API: no
+  // forms, no CAPTCHAs, and applicants land straight in their ATS. The key is sealed before it's stored and
+  // never sent back to the browser.
+
+  app.put('/api/hiring/ats', requireUser, async (req, res) => {
+    const s = membership(req.user.id);
+    if (!s) return res.status(404).json({ error: 'Add your company first' });
+    if (!atsApi || !secrets) return res.status(503).json({ error: 'Not available right now' });
+    const system = String(req.body?.system || '');
+    const key = String(req.body?.key || '').trim();
+    const board = String(req.body?.board || '')
+      .trim()
+      .replace(/^https?:\/\/[^/]+\//i, '')
+      .split(/[/?#]/)[0];
+    const problem = await atsApi.verify({ system, key, board }).catch(() => 'Couldn’t reach that system. Try again in a minute.');
+    if (problem) return res.status(400).json({ error: problem });
+    db.prepare(
+      "UPDATE startups SET ats_api = ?, ats_api_board = ?, ats_api_key = ?, ats_api_at = datetime('now'), ats_api_error = NULL, ats = ?, ats_slug = ?, ats_checked_at = datetime('now') WHERE id = ?",
+    ).run(system, board, secrets.seal(key), system, board, s.id);
+    // Bring their roles in now rather than at the next import.
+    let synced = null;
+    try {
+      synced = await syncBoard(s.id, system, board);
+    } catch (e) {
+      log.warn?.(`[hiring] board sync for ${s.domain}: ${e.message}`);
+    }
+    log.info?.(`[hiring] ${s.domain} connected ${system}/${board}${synced ? `, ${synced.roles_added} roles added` : ''}`);
+    res.json(view(req.user));
+  });
+
+  app.delete('/api/hiring/ats', requireUser, (req, res) => {
+    const s = membership(req.user.id);
+    if (!s) return res.status(404).json({ error: 'Add your company first' });
+    db.prepare('UPDATE startups SET ats_api = NULL, ats_api_board = NULL, ats_api_key = NULL, ats_api_at = NULL, ats_api_error = NULL WHERE id = ?').run(s.id);
     res.json(view(req.user));
   });
 

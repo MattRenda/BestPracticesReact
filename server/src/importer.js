@@ -166,6 +166,53 @@ export async function fetchBoard(ats, slug, get) {
 
 // ---------- the import ----------
 
+/** Saves a startup's developer roles from its job board and closes the ones that came down. */
+export function saveBoardJobs(db, startupId, jobs, stats = { roles_added: 0, roles_updated: 0, roles_closed: 0 }) {
+  const seen = new Set();
+  for (const j of jobs) {
+    if (!j.title || !isDevRole(j.title)) continue;
+    seen.add(j.external_id);
+    const skills = extractSkills(`${j.title}\n${j.description}`).join(', ');
+    const row = {
+      startup_id: startupId,
+      external_id: j.external_id,
+      title: j.title.slice(0, 100),
+      description: j.description.slice(0, 6000),
+      location: j.location.slice(0, 80),
+      work_mode: j.work_mode,
+      salary_min: j.salary_min,
+      salary_max: j.salary_max,
+      equity: j.equity,
+      skills,
+      apply_url: j.apply_url,
+      posted_at: j.posted_at,
+    };
+    const existing = db.prepare('SELECT id FROM roles WHERE startup_id = ? AND external_id = ?').get(startupId, j.external_id);
+    if (existing) {
+      db.prepare(
+        `UPDATE roles SET title=@title, description=@description, location=@location, work_mode=@work_mode, salary_min=@salary_min,
+           salary_max=@salary_max, equity=@equity, skills=@skills, apply_url=@apply_url, posted_at=@posted_at, status='open'
+         WHERE id = @id`,
+      ).run({ ...updatable(row), id: existing.id });
+      stats.roles_updated++;
+    } else {
+      db.prepare(
+        `INSERT INTO roles (startup_id, external_id, source, title, description, location, work_mode, salary_min, salary_max, equity, skills, apply_url, posted_at)
+         VALUES (@startup_id, @external_id, 'ats', @title, @description, @location, @work_mode, @salary_min, @salary_max, @equity, @skills, @apply_url, @posted_at)`,
+      ).run(row);
+      stats.roles_added++;
+    }
+  }
+  // Close imported roles that came down from the board
+  const open = db.prepare("SELECT id, external_id FROM roles WHERE startup_id = ? AND source = 'ats' AND status = 'open'").all(startupId);
+  for (const r of open)
+    if (!seen.has(r.external_id)) {
+      db.prepare("UPDATE roles SET status = 'closed' WHERE id = ?").run(r.id);
+      stats.roles_closed++;
+    }
+  return stats;
+}
+
 export function createImporter(db, { fetchImpl = fetch, log = console, concurrency = 6, hn = true } = {}) {
   let running = null;
 
@@ -315,48 +362,7 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
       return;
     }
 
-    const seen = new Set();
-    for (const j of jobs) {
-      if (!j.title || !isDevRole(j.title)) continue;
-      seen.add(j.external_id);
-      const skills = extractSkills(`${j.title}\n${j.description}`).join(', ');
-      const row = {
-        startup_id: s.id,
-        external_id: j.external_id,
-        title: j.title.slice(0, 100),
-        description: j.description.slice(0, 6000),
-        location: j.location.slice(0, 80),
-        work_mode: j.work_mode,
-        salary_min: j.salary_min,
-        salary_max: j.salary_max,
-        equity: j.equity,
-        skills,
-        apply_url: j.apply_url,
-        posted_at: j.posted_at,
-      };
-      const existing = db.prepare('SELECT id FROM roles WHERE startup_id = ? AND external_id = ?').get(s.id, j.external_id);
-      if (existing) {
-        db.prepare(
-          `UPDATE roles SET title=@title, description=@description, location=@location, work_mode=@work_mode, salary_min=@salary_min,
-             salary_max=@salary_max, equity=@equity, skills=@skills, apply_url=@apply_url, posted_at=@posted_at, status='open'
-           WHERE id = @id`,
-        ).run({ ...updatable(row), id: existing.id });
-        stats.roles_updated++;
-      } else {
-        db.prepare(
-          `INSERT INTO roles (startup_id, external_id, source, title, description, location, work_mode, salary_min, salary_max, equity, skills, apply_url, posted_at)
-           VALUES (@startup_id, @external_id, 'ats', @title, @description, @location, @work_mode, @salary_min, @salary_max, @equity, @skills, @apply_url, @posted_at)`,
-        ).run(row);
-        stats.roles_added++;
-      }
-    }
-    // Close imported roles that came down from the board
-    const open = db.prepare("SELECT id, external_id FROM roles WHERE startup_id = ? AND source = 'ats' AND status = 'open'").all(s.id);
-    for (const r of open)
-      if (!seen.has(r.external_id)) {
-        db.prepare("UPDATE roles SET status = 'closed' WHERE id = ?").run(r.id);
-        stats.roles_closed++;
-      }
+    saveBoardJobs(db, s.id, jobs, stats);
   }
 
   async function run({ limit } = {}) {
@@ -392,6 +398,15 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
     } catch (e) {
       stats.errors.unshift(e.message);
     }
+    // Startups that listed themselves on HireMe and connected their job board
+    if (!limit)
+      for (const s of db.prepare("SELECT id, name, ats, ats_slug FROM startups WHERE source = 'direct' AND ats IN ('ashby', 'greenhouse', 'lever') AND ats_slug IS NOT NULL AND status IN ('listed', 'approved')").all())
+        try {
+          const jobs = await fetchBoard(s.ats, s.ats_slug, get);
+          if (Array.isArray(jobs)) saveBoardJobs(db, s.id, jobs, stats);
+        } catch (e) {
+          stats.errors.push(`${s.name}: ${e.message}`);
+        }
     // Startups that take applications by email, from Hacker News' "Who is hiring?" threads
     if (hn && !limit)
       try {
@@ -410,6 +425,11 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
   return {
     get running() {
       return !!running;
+    },
+    /** Fetches one board now (a startup just connected it). Null when the board isn't there. */
+    async syncBoard(startupId, ats, slug) {
+      const jobs = await fetchBoard(ats, slug, get);
+      return Array.isArray(jobs) ? saveBoardJobs(db, startupId, jobs) : null;
     },
     /** Starts an import unless one is already running. Resolves with its stats. */
     start(opts) {

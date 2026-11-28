@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, salaryRange, WORK_LABEL } from '../api'
 import { GoogleButton } from '../components/GoogleButton'
 import { Sheet } from '../components/ui'
-import type { Hiring, HiringCompany, HiringRole, Me, WorkMode } from '../types'
+import type { AtsSystem, Hiring, HiringCompany, HiringRole, Me, WorkMode } from '../types'
 
 /** #/hiring: startups with 50 or fewer people list their developer roles. Applications arrive by email. */
 export function HiringView({ me, onChange }: { me: Me; onChange: () => void }) {
@@ -308,11 +308,7 @@ function Dashboard({ h, onChange }: { h: Hiring; onChange: (h: Hiring) => void }
       <button className="btn primary" onClick={() => setEditing(EMPTY_ROLE)}>
         Post a role
       </button>
-      {!!h.imported && (
-        <p className="muted small hiring-note">
-          HireMe also lists {h.imported} {h.imported === 1 ? 'role' : 'roles'} from your public job board. Those apply through your board, as before.
-        </p>
-      )}
+      <AtsPanel h={h} onChange={onChange} />
 
       <Sheet open={!!editing} onClose={() => setEditing(null)} label={editing?.id ? 'Edit role' : 'Post a role'}>
         {editing && (
@@ -485,5 +481,118 @@ function CompanyForm({ company, onSave, onCancel }: { company: HiringCompany; on
         </button>
       </div>
     </form>
+  )
+}
+
+const ATS: Record<AtsSystem, { name: string; board: string; where: string }> = {
+  greenhouse: {
+    name: 'Greenhouse',
+    board: 'job-boards.greenhouse.io/',
+    where: 'Configure → Dev Center → API Credential Management → Create new API key, type “Job Board”.',
+  },
+  lever: {
+    name: 'Lever',
+    board: 'jobs.lever.co/',
+    where: 'Settings → Integrations and API → API Credentials → Postings API → Generate new key (a Super Admin can do this).',
+  },
+  ashby: {
+    name: 'Ashby',
+    board: 'jobs.ashbyhq.com/',
+    where: 'Admin → Integrations → API Keys → New API key, with “Candidates: Write” and “Jobs: Read”.',
+  },
+}
+
+/**
+ * The startup's applicant tracking system. Connected, HireMe applies to the roles on its job board through
+ * the system's official API: every right swipe lands in their ATS, with no form in between.
+ */
+function AtsPanel({ h, onChange }: { h: Hiring; onChange: (h: Hiring) => void }) {
+  const found = h.atsFound
+  const [system, setSystem] = useState<AtsSystem>(found?.system ?? 'greenhouse')
+  const [board, setBoard] = useState(found?.board ?? '')
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function run(fn: () => Promise<Hiring>) {
+    setBusy(true)
+    setError('')
+    try {
+      onChange(await fn())
+      setKey('')
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    setBusy(false)
+  }
+
+  if (h.ats) {
+    const a = ATS[h.ats.system]
+    return (
+      <section className="ats-panel">
+        <h2>
+          {a.name} <span className={`pill ${h.ats.error ? 'bad' : 'ok'}`}>{h.ats.error ? 'Needs attention' : 'Connected'}</span>
+        </h2>
+        {h.ats.error ? (
+          <p className="banner">{h.ats.error}</p>
+        ) : (
+          <p className="muted small">
+            Right swipes on the {h.imported || 0} {h.imported === 1 ? 'role' : 'roles'} on your {a.name} board ({a.board}
+            {h.ats.board}) go straight into {a.name}, with resume, links and answers to your questions.
+          </p>
+        )}
+        {error && <p className="error">{error}</p>}
+        <button className="btn ghost small" disabled={busy} onClick={() => run(() => api.disconnectAts())}>
+          Disconnect
+        </button>
+      </section>
+    )
+  }
+
+  const a = ATS[system]
+  return (
+    <section className="ats-panel">
+      <h2>Get applicants in your ATS</h2>
+      <p className="muted small">
+        {found
+          ? `HireMe lists ${h.imported || 0} ${h.imported === 1 ? 'role' : 'roles'} from your ${ATS[found.system].name} board. Connect it and every right swipe lands in ${ATS[found.system].name} directly.`
+          : 'Use Greenhouse, Lever or Ashby? Connect it and HireMe lists the roles on your board, and every right swipe lands in your ATS directly.'}
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          run(() => api.connectAts({ system, board, key }))
+        }}
+      >
+        <fieldset className="field radios inline">
+          <legend>Your system</legend>
+          {(Object.keys(ATS) as AtsSystem[]).map((k) => (
+            <label key={k}>
+              <input type="radio" name="ats" checked={system === k} onChange={() => setSystem(k)} /> {ATS[k].name}
+            </label>
+          ))}
+        </fieldset>
+        <label className="field">
+          <span>Job board name</span>
+          <span className="input-with-btn">
+            <span className="muted small">{a.board}</span>
+            <input required value={board} onChange={(e) => setBoard(e.target.value)} placeholder="yourstartup" autoCapitalize="off" autoCorrect="off" />
+          </span>
+        </label>
+        <label className="field">
+          <span>{a.name} API key</span>
+          <input required type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} />
+          <small>{a.where} HireMe only uses it to send applications, and keeps it encrypted.</small>
+        </label>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="btn primary" disabled={busy || !board.trim() || !key.trim()}>
+          {busy ? 'Checking…' : `Connect ${a.name}`}
+        </button>
+      </form>
+    </section>
   )
 }

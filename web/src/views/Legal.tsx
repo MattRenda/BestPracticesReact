@@ -92,7 +92,7 @@ export function Terms() {
       <h2>Who can use HireMe</h2>
       <ul>
         <li>Developers looking for work.</li>
-        <li>Listings are only from startups with 50 or fewer people hiring for themselves. Startups that post roles on HireMe must sign in with an email at the company’s domain and confirm their size. We remove recruiters, staffing agencies and companies that don’t meet this.</li>
+        <li>Listings are only from startups with 50 or fewer people hiring for themselves. Startups that post roles on HireMe must sign in with an email at the company’s domain and confirm their size. A startup that connects its applicant tracking system gives HireMe an API key that is stored encrypted and used only to send it applications. We remove recruiters, staffing agencies and companies that don’t meet this.</li>
         <li>You need to be at least 18.</li>
       </ul>
 
