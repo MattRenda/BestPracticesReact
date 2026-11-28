@@ -95,9 +95,9 @@ async function launchBrowser(env) {
 }
 
 // Failures from "are you human?" checks. The developer can take these on themselves from Applications.
-export const CHECK_BLOCKED = 'Didn’t go through: the site has a bot check (CAPTCHA). Prove you’re human to send it, or apply on their site';
-const CHECK_BLOCKED_SUBMIT = 'Didn’t go through: a bot check (CAPTCHA) appeared when submitting. Prove you’re human to send it, or apply on their site';
-const CHECK_UNSOLVED = 'Didn’t go through: the “are you human?” check wasn’t finished. You can try again or apply on their site';
+export const CHECK_BLOCKED = 'The site wants to check you’re human. Tap Prove you’re human and HireMe sends it';
+const CHECK_BLOCKED_SUBMIT = 'The site wants to check you’re human. Tap Prove you’re human and HireMe sends it';
+const CHECK_UNSOLVED = 'The “are you human?” check wasn’t finished. Tap Prove you’re human to try again';
 /** Applications a person can finish by doing the site's human check themselves. */
 export const humanCheckable = (a) => a?.state === 'failed' && /bot check|CAPTCHA|human/i.test(a.error || '');
 
@@ -243,6 +243,11 @@ export function createApplier(
     const end = Date.now() + timeoutMs;
     let clear = 0;
     while (Date.now() < end && !human.cancelled) {
+      // Passed: the site has its pass token (the green-tick box often stays on the page), or the check is gone.
+      if (await checkPassed(page)) {
+        human.frame(null);
+        return true;
+      }
       const el = await captchaElement(page);
       if (!el) {
         if (++clear >= 2) {
@@ -259,14 +264,30 @@ export function createApplier(
         }
       }
       if (human.doneTapped) {
-        human.doneTapped = false;
-        if (!(await captchaElement(page))) return true;
+        // They say they've done it: carry on and let the site be the judge when HireMe presses Submit.
+        human.frame(null);
+        return true;
       }
       await sleep(500);
     }
     human.frame(null);
     return false;
   }
+  /** The site has the pass the check hands over once a person completes it (reCAPTCHA, hCaptcha, Turnstile). */
+  async function checkPassed(page) {
+    for (const f of page.frames()) {
+      const ok = await f
+        .evaluate(() => {
+          const token = [...document.querySelectorAll('textarea[name="g-recaptcha-response"], textarea[name="h-captcha-response"], input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"]')].some((t) => t.value.trim());
+          const ticked = document.querySelector('#recaptcha-anchor[aria-checked="true"], #checkbox[aria-checked="true"]');
+          return token || !!ticked;
+        })
+        .catch(() => false);
+      if (ok) return true;
+    }
+    return false;
+  }
+
   /** The visible check on the page: the picture challenge if one is open, else the checkbox. */
   async function captchaElement(page) {
     let best = null;
@@ -281,6 +302,23 @@ export function createApplier(
       if (!best || area > best.area) best = { el, area };
     }
     return best?.el ?? null;
+  }
+
+  /** How many visible required fields (and required file inputs) are still empty, across frames. */
+  async function emptyRequired(page) {
+    let n = 0;
+    for (const f of page.frames())
+      n += await f
+        .evaluate(() =>
+          [...document.querySelectorAll('input[required], input[aria-required="true"], textarea[required], textarea[aria-required="true"], select[required]')].filter((el) => {
+            if (el.disabled || el.type === 'hidden' || el.type === 'checkbox' || el.type === 'radio') return false;
+            if (el.type === 'file') return !el.files?.length;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && !String(el.value || '').trim();
+          }).length,
+        )
+        .catch(() => 0);
+    return n;
   }
 
   async function hasCaptcha(page, { challengeOnly = false } = {}) {
@@ -396,33 +434,49 @@ export function createApplier(
         return await done('canceled', `The application is in ${LANGUAGE_NAMES[pageLang] || 'another language'}, so HireMe skipped it`);
       }
 
-      let filled = 0;
-      const missing = [];
-      for (const frame of page.frames()) {
-        const res = await frame
-          .evaluate(FILLER)
-          .then(() => frame.evaluate((ctx) => window.__hireme.run(ctx), { profile: fp, coverLetter: note }))
-          .catch((e) => (log.warn?.(`fill failed in ${frame.url()}: ${e.message}`), null));
-        if (!res) continue;
-        filled += res.filled;
-        missing.push(...res.missing);
-        for (const c of res.combos) {
-          if (await chooseCombo(frame, c)) filled++;
-          else if (c.required) missing.push(c.question);
+      // Fill every frame. The filler skips fields that already hold a value, so running it again only fills
+      // what's empty: some sites (Greenhouse's new boards) finish loading after we start and wipe the form.
+      const fillAll = async () => {
+        let n = 0;
+        const miss = [];
+        for (const frame of page.frames()) {
+          const res = await frame
+            .evaluate(FILLER)
+            .then(() => frame.evaluate((ctx) => window.__hireme.run(ctx), { profile: fp, coverLetter: note }))
+            .catch((e) => (log.warn?.(`fill failed in ${frame.url()}: ${e.message}`), null));
+          if (!res) continue;
+          n += res.filled;
+          miss.push(...res.missing);
+          for (const c of res.combos) {
+            if (await chooseCombo(frame, c)) n++;
+            else if (c.required) miss.push(c.question);
+          }
         }
+        return { n, miss };
+      };
+      const first = await fillAll();
+      let filled = first.n;
+      const missing = first.miss;
+      if (filled) {
+        await sleep(2500);
+        if (await emptyRequired(page)) filled += (await fillAll()).n;
       }
       const uniq = [...new Set(missing.map((m) => m.trim()).filter(Boolean))];
 
       if (!filled) return await done('failed', 'No application form found on the page');
       if (uniq.length) return await done('needs_you', `${uniq.length === 1 ? 'A question' : `${uniq.length} questions`} only you can answer`, uniq, filled);
-      if (await hasCaptcha(page)) {
+      if ((await hasCaptcha(page)) && !(await checkPassed(page))) {
         if (!human) return await done('failed', CHECK_BLOCKED, [], filled);
         if (!(await humanCheck(page, human))) return await done('failed', CHECK_UNSOLVED, [], filled);
       }
       if (practice) return await done('practiced', 'Filled but not submitted (test)', [], filled);
 
       const submit = await findSubmit(page);
-      if (!submit) return await done('failed', 'Didn’t go through: HireMe couldn’t find the Submit button. You can apply on their site', [], filled);
+      if (!submit) return await done('failed', 'Didn’t go through: HireMe couldn’t find the Submit button', [], filled);
+      if (await emptyRequired(page)) {
+        await fillAll();
+        await sleep(800);
+      }
       const startUrl = page.url();
       human?.status('Sending…');
       await submit.click({ timeout: 5000 });
@@ -431,15 +485,19 @@ export function createApplier(
         await sleep(1000);
         const u = page.url();
         if ((u !== startUrl && /confirm|thank|success|submitted|complete/i.test(u)) || SUCCESS.test(await pageText(page))) return await done('submitted', '', [], filled);
-        if (await hasCaptcha(page, { challengeOnly: true })) {
+        if ((await hasCaptcha(page, { challengeOnly: true })) && !(await checkPassed(page))) {
           // The developer can prove they're human themselves; otherwise it's a quiet failure.
           if (!human || checked) return await done('failed', human ? CHECK_UNSOLVED : CHECK_BLOCKED_SUBMIT, [], filled);
           checked = true;
           if (!(await humanCheck(page, human))) return await done('failed', CHECK_UNSOLVED, [], filled);
           human.status('Sending…');
-          // Most sites send the form once the check passes; if it's still on the form, press Submit again.
+          // Most sites send the form once the check passes; if it's still on the form (and some fields were
+          // cleared meanwhile), fill them again and press Submit again.
           await sleep(1500);
-          if (page.url() === startUrl && !SUCCESS.test(await pageText(page))) await (await findSubmit(page))?.click({ timeout: 5000 }).catch(() => {});
+          if (page.url() === startUrl && !SUCCESS.test(await pageText(page))) {
+            if (await emptyRequired(page)) await fillAll();
+            await (await findSubmit(page))?.click({ timeout: 5000 }).catch(() => {});
+          }
           waited = 0;
           continue;
         }
@@ -448,7 +506,7 @@ export function createApplier(
           if (errors.length) return await done('failed', `Didn’t go through: the form didn’t accept it (${errors.slice(0, 3).join('; ')})`, [], filled);
         }
       }
-      return await done('failed', 'May not have gone through: the site didn’t show a confirmation, often a hidden bot check. You can apply on their site to be sure', [], filled);
+      return await done('failed', 'May not have gone through: the site didn’t show a confirmation, often a hidden bot check', [], filled);
     } finally {
       await context.close().catch(() => {});
     }

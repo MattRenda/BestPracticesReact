@@ -229,3 +229,12 @@ test('admin can see import history and start a run', async () => {
   assert.equal((await dev.req('POST', '/admin/import')).status, 403);
   await app.locals.importer.start(); // let it finish before the server closes
 });
+
+test('a guessed Greenhouse board that names another company is not this startup’s', async () => {
+  const { belongsToOther } = await import('../src/importer.js');
+  const xion = [{ title: 'Frontend', company: 'XION' }, { title: 'Design', company: 'XION' }];
+  assert.equal(belongsToOther(xion, 'Burnt'), true);
+  assert.equal(belongsToOther(xion, 'XION'), false);
+  assert.equal(belongsToOther([{ company: 'Burnt Labs' }], 'Burnt'), false);
+  assert.equal(belongsToOther([{ title: 'x' }], 'Burnt'), false, 'boards that don’t name a company are judged other ways');
+});

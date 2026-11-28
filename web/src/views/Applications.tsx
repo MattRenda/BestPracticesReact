@@ -259,7 +259,7 @@ function ApplicationSheet({ app, onClose, onChanged }: { app: Application | null
           {app.title} · <StateChip state={app.state} />
           {app.submitted_at && ` on ${new Date(`${app.submitted_at.replace(' ', 'T')}Z`).toLocaleDateString()}`}
         </p>
-        {app.error && app.state !== 'submitted' && !checking && <p className="callout small">{app.error}</p>}
+        {app.error && app.state !== 'submitted' && !checking && !app.human_check && <p className="callout small">{app.error}</p>}
 
         {(app.human_check || checking) && (
           <section className="human-box">
@@ -350,27 +350,7 @@ function ApplicationSheet({ app, onClose, onChanged }: { app: Application | null
           </details>
         )}
         {error && <p className="error">{error}</p>}
-        <div className="sheet-actions wrap">
-          {app.apply_url && ['needs_you', 'failed'].includes(app.state) && (
-            <a className="btn ghost" href={app.apply_url} target="_blank" rel="noreferrer noopener">
-              Apply on their site
-            </a>
-          )}
-          {['needs_you', 'failed'].includes(app.state) && (
-            <button className="btn ghost" disabled={busy} onClick={() => act(() => api.selfApplied(app.id))}>
-              I applied myself
-            </button>
-          )}
-          {app.state === 'failed' && app.role_status === 'open' && (
-            <button className="btn ghost" disabled={busy} onClick={() => act(() => api.retryApplication(app.id))}>
-              Try again
-            </button>
-          )}
-          {['queued', 'needs_you', 'failed'].includes(app.state) && (
-            <button className="link-btn quiet" disabled={busy} onClick={() => act(() => api.cancelApplication(app.id))}>
-              Cancel
-            </button>
-          )}
+        <div className="sheet-actions">
           <button className="btn primary" onClick={onClose}>
             Close
           </button>

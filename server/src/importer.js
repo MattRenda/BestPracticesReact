@@ -54,6 +54,15 @@ const updatable = ({ startup_id: _s, external_id: _e, ...rest }) => rest;
 
 const squash = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const NOT_A_COMPANY = /^(the|us|you|your|our|this|role|team|company|job|position|opportunity|it|them|me)\b/i;
+/** True when the board says its jobs are another company's (Greenhouse names the company on every job). */
+export function belongsToOther(jobs, companyName) {
+  const me = squash(companyName);
+  const named = jobs.map((j) => squash(j.company)).filter(Boolean);
+  if (!me || !named.length) return false;
+  const mine = named.filter((n) => n === me || n.includes(me) || me.includes(n)).length;
+  return mine < named.length / 2;
+}
+
 /**
  * True when a job board lists roles for several companies — a VC's portfolio board or a recruiter's —
  * rather than the startup's own. Telltales: descriptions that open "About <Other Co>", or titles
@@ -138,6 +147,7 @@ export async function fetchBoard(ats, slug, get) {
       salary_max: null,
       equity: '',
       apply_url: j.absolute_url || `https://job-boards.greenhouse.io/${slug}/jobs/${j.id}`,
+      company: j.company_name || '', // whose board this really is (guessed slugs collide: "burnt" is XION's)
       posted_at: j.first_published || j.updated_at || null,
     }));
   }
@@ -280,7 +290,7 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
         try {
           const jobs = await fetchBoard(ats, slug, get);
           // Only trust a guessed board if its posts mention the company — names collide.
-          if (jobs.length && !looksShared(jobs, company.name) && jobs.some((j) => nameRe.test(j.description) || j.description.toLowerCase().includes(domain))) return { ats, slug };
+          if (jobs.length && !looksShared(jobs, company.name) && !belongsToOther(jobs, company.name) && jobs.some((j) => nameRe.test(j.description) || j.description.toLowerCase().includes(domain))) return { ats, slug };
         } catch {
           /* try the next guess */
         }
@@ -353,12 +363,12 @@ export function createImporter(db, { fetchImpl = fetch, log = console, concurren
       db.prepare("UPDATE startups SET ats = NULL, ats_checked_at = NULL WHERE id = ?").run(s.id); // board moved; rediscover next run
       return;
     }
-    if (looksShared(jobs, c.name)) {
+    if (looksShared(jobs, c.name) || belongsToOther(jobs, c.name)) {
       // Not this startup's own board: don't list its roles, and don't look again for a while.
       db.prepare("UPDATE startups SET ats = 'none', ats_slug = NULL, ats_checked_at = datetime('now') WHERE id = ?").run(s.id);
       const closed = db.prepare("UPDATE roles SET status = 'closed' WHERE startup_id = ? AND source = 'ats' AND status = 'open'").run(s.id).changes;
       stats.roles_closed += closed;
-      stats.errors.push(`${c.name}: skipped ${board.ats}/${board.slug}, a board shared by several companies`);
+      stats.errors.push(`${c.name}: skipped ${board.ats}/${board.slug}, ${belongsToOther(jobs, c.name) ? `${jobs[0].company}'s board` : 'a board shared by several companies'}`);
       return;
     }
 

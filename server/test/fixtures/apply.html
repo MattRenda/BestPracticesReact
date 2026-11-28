@@ -65,7 +65,10 @@
     f.width = 300; f.height = 80;
     document.getElementById('captcha-slot').appendChild(f);
   }
-  window.addEventListener('message', (e) => { if (e.data === 'hireme-test-solved') document.getElementById('captcha-slot').innerHTML = ''; });
+  // Like a page that finishes loading after HireMe starts: the form is wiped once, a moment in
+  if (location.search.includes('wipe')) setTimeout(() => document.getElementById('app').reset(), 1200);
+  // Like reCAPTCHA v2: once passed, the box stays (ticked) and the page gets a token; Submit then goes through
+  window.addEventListener('message', (e) => { if (e.data === 'hireme-test-solved') { const t = document.createElement('textarea'); t.name = 'g-recaptcha-response'; t.style.display = 'none'; t.value = 'token'; document.getElementById('captcha-slot').appendChild(t); } });
   if (location.search.includes('invisible')) {
     // Ashby-style invisible reCAPTCHA: a badge, nothing to solve
     const f = document.createElement('iframe');
@@ -92,6 +95,8 @@
 
   document.getElementById('app').addEventListener('submit', async (e) => {
     e.preventDefault();
+    // A visible check must be passed first, as on real sites
+    if (location.search.includes('captcha') && !document.querySelector('[name="g-recaptcha-response"]')?.value) return;
     const fd = new FormData(e.target);
     const data = Object.fromEntries([...fd.entries()].map(([k, v]) => [k, v instanceof File ? { name: v.name, size: v.size, type: v.type } : v]));
     await fetch('/submit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
