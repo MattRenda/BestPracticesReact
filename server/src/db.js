@@ -268,7 +268,7 @@ export function openDb(file = DB_PATH) {
   }
   // One-time: questions like "Who referred you or where did you see our job ad?" are answered now; try those again.
   if (db.prepare('PRAGMA user_version').get().user_version < 4) {
-    db.exec("UPDATE applications SET state = 'queued', error = NULL WHERE state = 'needs_you'");
+    db.exec("UPDATE applications SET state = 'queued', error = '' WHERE state = 'needs_you'");
     db.exec('PRAGMA user_version = 4');
   }
 
