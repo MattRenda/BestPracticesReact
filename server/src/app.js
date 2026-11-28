@@ -316,6 +316,7 @@ export function createApp(
         candidates,
         linkedin: fromSite ? { url: fromSite, from: site.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/.*$/, '') } : null,
         linkedinMatches, // null when no search key is set up
+        linkedinSearch: { enabled: linkedinMatches != null, name: name.trim().split(/\s+/).length >= 2 ? name.trim() : '' },
       });
     } catch (e) {
       log.warn?.(`[findme] ${e.message}`);

@@ -620,3 +620,12 @@ a { color: var(--moss); }
 .input-with-btn { display: flex; gap: 8px; align-items: center; }
 .input-with-btn input { flex: 1; min-width: 0; }
 .findme-linkedin .row-actions { flex-wrap: wrap; }
+
+/* Find me fits the phone: cards shrink to the sheet's width instead of pushing it off screen. */
+.sheet { max-width: 100vw; box-sizing: border-box; }
+.findme { box-sizing: border-box; width: 100%; overflow-x: hidden; }
+.findme-list { grid-template-columns: minmax(0, 1fr); }
+.findme-list li { min-width: 0; }
+.findme-info a { overflow-wrap: anywhere; }
+.findme-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.findme-close { font-size: 1.2rem; padding: 4px 8px; line-height: 1; }

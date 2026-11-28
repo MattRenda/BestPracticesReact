@@ -128,7 +128,7 @@ export function Onboarding({ isGuest, email, pendingEmail, onDone }: { isGuest: 
   // With a resume, most questions are already answered: confirm what we read, then only ask the rest.
   const steps: Step[] = d.resume
     ? ['review', 'work', 'auth', ...(d.links.github || d.links.linkedin || d.links.portfolio ? [] : (['links'] as Step[])), 'contact']
-    : ['kinds', 'skills', 'years', 'work', 'auth', 'links', 'name', 'contact']
+    : ['kinds', 'skills', 'years', 'work', 'auth', 'name', 'links', 'contact'] // name first, so Find me can search LinkedIn for it
   const current = steps[Math.min(step, steps.length - 1)]
   const last = step >= steps.length - 1
   const next = () => (last ? finish() : setStep(step + 1))

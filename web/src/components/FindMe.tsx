@@ -16,14 +16,17 @@ export function FindMe({ who, links, onPick }: { who: { name?: string; email?: s
   const [found, setFound] = useState<FoundAccount[] | null>(null)
   const [siteLinkedin, setSiteLinkedin] = useState<{ url: string; from: string } | null>(null)
   const [liMatches, setLiMatches] = useState<FoundLinkedin[]>([])
+  const [liSearch, setLiSearch] = useState<{ enabled: boolean; name: string }>({ enabled: false, name: '' })
+  const [typedName, setTypedName] = useState('')
   const [error, setError] = useState('')
 
-  async function search() {
+  async function search(name = who.name) {
     setOpen(true)
     setBusy(true)
     setError('')
     try {
-      const r = await api.findLinks({ ...who, website: who.website || links.portfolio })
+      const r = await api.findLinks({ ...who, name, website: who.website || links.portfolio })
+      setLiSearch(r.linkedinSearch ?? { enabled: false, name: '' })
       setFound(r.candidates)
       setSiteLinkedin(r.linkedin && !r.candidates.some((c) => c.linkedin === r.linkedin?.url) ? r.linkedin : null)
       const known = new Set([...r.candidates.map((c) => c.linkedin), r.linkedin?.url].filter(Boolean))
@@ -45,12 +48,17 @@ export function FindMe({ who, links, onPick }: { who: { name?: string; email?: s
 
   return (
     <>
-      <button type="button" className="btn ghost small findme-btn" onClick={search}>
+      <button type="button" className="btn ghost small findme-btn" onClick={() => search()}>
         Find me
       </button>
       <Sheet open={open} onClose={() => setOpen(false)} label="Find your GitHub and LinkedIn">
         <div className="findme">
-          <h2>Is one of these you?</h2>
+          <div className="findme-head">
+            <h2>Is one of these you?</h2>
+            <button type="button" className="link-btn findme-close" aria-label="Close" onClick={() => setOpen(false)}>
+              ✕
+            </button>
+          </div>
           <p className="muted small">Public GitHub accounts that match your name, email or city. Pick yours and HireMe fills in your links.</p>
           {busy && <p className="muted">Looking on GitHub…</p>}
           {error && <p className="error">{error}</p>}
@@ -93,9 +101,24 @@ export function FindMe({ who, links, onPick }: { who: { name?: string; email?: s
                   That’s my LinkedIn
                 </button>
               </>
-            ) : liMatches.length ? null : (
+            ) : liMatches.length ? null : liSearch.enabled && !liSearch.name && !busy ? (
+              <form
+                className="input-with-btn"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (typedName.trim().split(/\s+/).length >= 2) search(typedName.trim())
+                }}
+              >
+                <input value={typedName} onChange={(e) => setTypedName(e.target.value)} placeholder="Your first and last name" autoComplete="name" aria-label="Your name" />
+                <button className="btn ghost small" disabled={typedName.trim().split(/\s+/).length < 2}>
+                  Search LinkedIn
+                </button>
+              </form>
+            ) : (
               <p className="muted small">
-                LinkedIn can’t be searched from outside. Open your profile, tap Share (or More) → Copy link, then come back and tap Paste.
+                {liSearch.enabled && liSearch.name
+                  ? `No LinkedIn profiles came up for “${liSearch.name}”. Paste your profile link into the LinkedIn box instead.`
+                  : 'Paste your LinkedIn profile link into the LinkedIn box.'}
               </p>
             )}
             {liMatches.length > 0 && (
@@ -126,26 +149,8 @@ export function FindMe({ who, links, onPick }: { who: { name?: string; email?: s
                     </li>
                   ))}
                 </ul>
-                <p className="muted small findme-credit">LinkedIn results from Brave Search. Not yours? Open your profile and Paste.</p>
               </>
             )}
-            <div className="row-actions">
-              <a className="btn ghost small" href="https://www.linkedin.com/in/me/" target="_blank" rel="noreferrer noopener">
-                Open my LinkedIn
-              </a>
-              <PasteLinkedIn
-                onLink={(url) => {
-                  onPick({ linkedin: url })
-                  setOpen(false)
-                }}
-                onError={setError}
-              />
-            </div>
-          </div>
-          <div className="sheet-actions">
-            <button type="button" className="btn ghost" onClick={() => setOpen(false)}>
-              None of these
-            </button>
           </div>
         </div>
       </Sheet>

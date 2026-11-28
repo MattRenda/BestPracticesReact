@@ -11,7 +11,17 @@ export function Sheet({ open, onClose, children, label }: { open: boolean; onClo
     if (!open && d.open) d.close()
   }, [open])
   return (
-    <dialog ref={ref} className="sheet" aria-label={label} onClose={onClose} onCancel={onClose}>
+    <dialog
+      ref={ref}
+      className="sheet"
+      aria-label={label}
+      onClose={onClose}
+      onCancel={onClose}
+      // A tap on the dimmed backdrop (the dialog itself, outside its content) closes it.
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
       {open && children}
     </dialog>
   )

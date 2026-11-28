@@ -63,6 +63,7 @@ export function createFindMe({
       const place = snippet.match(/Location:\s*([^·|.]+?)(?:\s*[·|.]|$)/i)?.[1] || '';
       out.push({ url: `https://www.linkedin.com/in/${slug}`, name: who || '', headline: rest.join(' · ').slice(0, 140), location: place.trim(), snippet, why, score });
     }
+    log.info?.(`[findme] LinkedIn search: ${results.length} results, ${out.length} matches`);
     return out.sort((a, b) => b.score - a.score).slice(0, 5).map(({ score, ...c }) => ({ ...c, strong: score >= 65 }));
   }
 
