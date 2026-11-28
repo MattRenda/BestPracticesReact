@@ -1,3 +1,4 @@
+import { LocationField } from '../components/LocationField'
 import { FindMe, PasteLinkedIn } from '../components/FindMe'
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { api, uploadResumeFile } from '../api'
@@ -174,7 +175,7 @@ export function DevProfileView({ isGuest, pendingEmail, onSaved }: { isGuest: bo
           <legend>The basics</legend>
           <div className="row2">
             {text('name', 'Name', 'Your name', true)}
-            {text('location', 'Where you’re based', 'City, State')}
+            <LocationField label="Where you’re based" value={p.location ?? ''} onChange={(v) => update({ location: v })} />
           </div>
           {text('headline', 'Headline', 'Senior full-stack engineer · React, Node', true)}
           <div className="row2">

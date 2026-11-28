@@ -1,3 +1,4 @@
+import { LocationField } from '../components/LocationField'
 import { FindMe, PasteLinkedIn } from '../components/FindMe'
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { api, uploadResumeFile } from '../api'
@@ -302,10 +303,7 @@ export function Onboarding({ isGuest, email, pendingEmail, onDone }: { isGuest: 
               </Chip>
             ))}
           </div>
-          <label className="field ob-field">
-            <span>Where are you based?</span>
-            <input value={d.location} onChange={(e) => update({ location: e.target.value })} placeholder="City, State" autoComplete="address-level2" />
-          </label>
+          <LocationField className="field ob-field" label="Where are you based?" value={d.location} onChange={(v) => update({ location: v })} />
         </>
       )
       break
