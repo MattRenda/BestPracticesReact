@@ -34,14 +34,28 @@ async function lookup(query = ''): Promise<string> {
 /** A city from the connection, without asking. Good enough to prefill; the developer can change it. */
 export const guessLocation = () => lookup()
 
-/** The device's location (the browser asks for permission). '' if they say no or it fails. */
-export function preciseLocation(): Promise<string> {
+/**
+ * The device's location (the browser asks for permission), with how accurate the phone says it is in meters.
+ * Android can grant "approximate" location only, which is blurred by a few kilometers: the city can then be
+ * the next town over, so callers say so.
+ */
+export function preciseLocation(): Promise<{ place: string; accuracy: number }> {
   return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve('')
+    if (!navigator.geolocation) return resolve({ place: '', accuracy: 0 })
     navigator.geolocation.getCurrentPosition(
-      (pos) => lookup(`&latitude=${pos.coords.latitude.toFixed(3)}&longitude=${pos.coords.longitude.toFixed(3)}`).then(resolve),
-      () => resolve(''),
-      { timeout: 10000, maximumAge: 3600_000 },
+      (pos) =>
+        lookup(`&latitude=${pos.coords.latitude.toFixed(4)}&longitude=${pos.coords.longitude.toFixed(4)}`).then((place) =>
+          resolve({ place, accuracy: Math.round(pos.coords.accuracy || 0) }),
+        ),
+      () => resolve({ place: '', accuracy: 0 }),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     )
   })
+}
+
+/** What to tell the developer about where the city came from. */
+export function locationNote(accuracy: number): string {
+  if (accuracy > 1500)
+    return `Your phone only shared an approximate location (within about ${Math.round(accuracy / 1000)} km), so this may be a nearby town. Allow “Precise” location for this site in your phone’s settings, or type your city.`
+  return 'Filled in from your phone’s location.'
 }

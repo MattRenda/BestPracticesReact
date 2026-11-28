@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { guessLocation, preciseLocation } from '../location'
+import { guessLocation, locationNote, preciseLocation } from '../location'
 
 /**
  * A "City, State" box that fills itself in when it's empty (device location if allowed, else the connection's
@@ -46,7 +46,8 @@ export function LocationField({
         .then((s) => s.state)
         .catch(() => 'prompt')
       if (state === 'denied') return
-      fill(await preciseLocation(), 'Filled in from your location.')
+      const { place, accuracy } = await preciseLocation()
+      fill(place, locationNote(accuracy))
     })()
     return () => {
       live = false
@@ -72,12 +73,12 @@ export function LocationField({
           disabled={busy}
           onClick={async () => {
             setBusy(true)
-            const place = await preciseLocation()
+            const { place, accuracy } = await preciseLocation()
             setBusy(false)
             if (place) {
               onChange(place)
-              setNote('')
-            } else setNote('Couldn’t get your location. Type your city instead.')
+              setNote(locationNote(accuracy))
+            } else setNote('Couldn’t get your location (it may be blocked for this site). Type your city instead.')
           }}
         >
           {busy ? 'Locating…' : 'Use my location'}
