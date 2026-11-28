@@ -1,5 +1,5 @@
 import { LocationField } from '../components/LocationField'
-import { FindMe, PasteLinkedIn } from '../components/FindMe'
+import { FindMe } from '../components/FindMe'
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { api, uploadResumeFile } from '../api'
 import type { DevProfile, Links, WorkPref } from '../types'
@@ -343,7 +343,6 @@ export function Onboarding({ isGuest, email, pendingEmail, onDone }: { isGuest: 
                     onPick={(url) => update({ links: { ...d.links, [k]: url } })}
                   />
                 )}
-                {k === 'linkedin' && <PasteLinkedIn onLink={(url) => update({ links: { ...d.links, linkedin: url } })} onError={() => {}} />}
               </span>
             </div>
           ))}

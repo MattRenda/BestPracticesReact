@@ -1,5 +1,5 @@
 import { LocationField } from '../components/LocationField'
-import { FindMe, PasteLinkedIn } from '../components/FindMe'
+import { FindMe } from '../components/FindMe'
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { api, uploadResumeFile } from '../api'
 import type { DevProfile, WorkPref } from '../types'
@@ -240,7 +240,6 @@ export function DevProfileView({ isGuest, pendingEmail, onSaved }: { isGuest: bo
               <span className="input-with-btn">
                 <input id="link-linkedin" type="url" value={p.links?.linkedin ?? ''} onChange={(e) => update({ links: { ...p.links, linkedin: e.target.value } })} placeholder="https://www.linkedin.com/in/you" />
                 <FindMe kind="linkedin" who={{ name: p.name, location: p.location, website: p.links?.portfolio }} onPick={(url) => saveLinks({ linkedin: url })} />
-                <PasteLinkedIn onLink={(url) => saveLinks({ linkedin: url })} onError={setToast} />
               </span>
             </div>
           </div>

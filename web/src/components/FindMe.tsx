@@ -117,7 +117,7 @@ export function FindMe({ kind, who, onPick }: { kind: 'github' | 'linkedin'; who
                 !linkedin.length &&
                 !error && (
                   <p className="muted">
-                    {searchedName ? `No LinkedIn profiles came up for “${searchedName}”.` : 'No LinkedIn profile found.'} Paste your profile link into the LinkedIn box instead.
+                    {searchedName ? `No LinkedIn profiles came up for “${searchedName}”.` : 'No LinkedIn profile found.'} Type your profile link into the LinkedIn box instead.
                   </p>
                 )
               )}
@@ -144,28 +144,5 @@ export function FindMe({ kind, who, onPick }: { kind: 'github' | 'linkedin'; who
         </div>
       </Sheet>
     </>
-  )
-}
-
-/** One tap: reads a copied LinkedIn profile link from the clipboard (the browser asks the first time). */
-export function PasteLinkedIn({ onLink, onError }: { onLink: (url: string) => void; onError: (msg: string) => void }) {
-  if (!navigator.clipboard?.readText) return null
-  return (
-    <button
-      type="button"
-      className="btn ghost small"
-      onClick={async () => {
-        try {
-          const text = await navigator.clipboard.readText()
-          const slug = text.match(/linkedin\.com\/in\/([\w%-]{3,100})/i)?.[1]
-          if (slug) onLink(`https://www.linkedin.com/in/${slug}`)
-          else onError('That isn’t a LinkedIn profile link. On your LinkedIn profile, tap Share (or More) → Copy link, then Paste.')
-        } catch {
-          onError('HireMe couldn’t read the clipboard. Paste the link into the LinkedIn box instead.')
-        }
-      }}
-    >
-      Paste
-    </button>
   )
 }
